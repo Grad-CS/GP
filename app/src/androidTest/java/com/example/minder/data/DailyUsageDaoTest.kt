@@ -17,6 +17,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.runner.RunWith
 import android.database.sqlite.SQLiteConstraintException
+import com.example.minder.data.local.database.MinderDatabase
 
 @RunWith(AndroidJUnit4::class)
 class DailyUsageDaoTest {

@@ -21,8 +21,9 @@ class CheckDailyLimitUseCase(
             date = date
         )
 
-        val totalUsage = usage?.totalUsage ?: 0
+        val totalUsageSeconds = usage?.totalUsage ?: 0
+        val dailyLimitSeconds = app.dailyLimit * 60
 
-        return totalUsage >= app.dailyLimit
+        return totalUsageSeconds >= dailyLimitSeconds
     }
 }

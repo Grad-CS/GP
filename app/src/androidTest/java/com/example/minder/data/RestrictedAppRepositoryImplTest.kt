@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.minder.data.local.MinderDatabase
 import com.example.minder.data.local.entities.RestrictedAppEntity
 import com.example.minder.data.local.entities.UserEntity
 import com.example.minder.domain.model.RestrictedApp
@@ -16,6 +15,7 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.example.minder.data.local.database.MinderDatabase
 
 @RunWith(AndroidJUnit4::class)
 class RestrictedAppRepositoryImplTest {

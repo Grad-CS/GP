@@ -14,6 +14,7 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.example.minder.data.local.database.MinderDatabase
 
 @RunWith(AndroidJUnit4::class)
 class UserDaoTest {
