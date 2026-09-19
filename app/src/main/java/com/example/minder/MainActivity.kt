@@ -14,44 +14,91 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import com.example.minder.data.local.database.MinderDatabase
+import com.example.minder.data.local.entities.UserEntity
+import com.example.minder.data.repository.RestrictedAppRepositoryImpl
+import com.example.minder.data.repository.UsageSessionRepositoryImpl
+import com.example.minder.domain.usecase.usage.SaveUsageSessionsUseCase
 import com.example.minder.services.usage.UsagePermissionManager
 import com.example.minder.services.usage.UsageStatsService
 import com.example.minder.ui.theme.MinderTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
     // Lama - Manages and checks the Usage Access permission
     private lateinit var usagePermissionManager: UsagePermissionManager
+
+    // Lama - Provides access to the local Room database
+    private lateinit var database: MinderDatabase
+
+    // Lama - Reads Android application usage information
+    private lateinit var usageStatsService: UsageStatsService
+
+    // Lama - Connects usage data with the repositories and saves usage sessions
+    private lateinit var saveUsageSessionsUseCase: SaveUsageSessionsUseCase
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge()
+
         // Lama - Initializes the Usage Access permission manager
-        usagePermissionManager = UsagePermissionManager(this)
+        usagePermissionManager =
+            UsagePermissionManager(this)
+
+        // Lama - Initializes the Minder Room database
+        database =
+            MinderDatabase.getDatabase(applicationContext)
+
+        // Lama - Initializes the Android usage statistics service
+        usageStatsService =
+            UsageStatsService(this)
+
+        // Lama - Initializes the restricted application repository
+        val restrictedAppRepository =
+            RestrictedAppRepositoryImpl(
+                database.restrictedAppDao()
+            )
+
+        // Lama - Initializes the usage session repository
+        val usageSessionRepository =
+            UsageSessionRepositoryImpl(
+                database.usageSessionDao()
+            )
+
+        // Lama - Initializes the use case that saves application usage sessions
+        saveUsageSessionsUseCase =
+            SaveUsageSessionsUseCase(
+                restrictedAppRepository = restrictedAppRepository,
+                usageSessionRepository = usageSessionRepository
+            )
 
         setContent {
             MinderTheme {
-                // Lama - Creates the screen for testing app usage tracking
                 UsageTestScreen()
             }
         }
     }
-    // Lama - Creates the screen for testing app usage tracking
+
     @Composable
     fun UsageTestScreen() {
-        // Lama - Stores the usage data that will be displayed to the user
-        var hasPermission by remember {
-            mutableStateOf(usagePermissionManager.hasUsageAccess())
-        }
-        // Lama - Stores the usage data that will be displayed to the user
+
+        // Lama - Stores the current Usage Access permission state
+        val hasPermission = usagePermissionManager.hasUsageAccess()
+
+        // Lama - Stores usage information displayed on the screen
         var usageResult by remember {
-            mutableStateOf("No usage data loaded yet")
+            mutableStateOf(
+                "No usage data loaded yet"
+            )
         }
 
         Scaffold(
             modifier = Modifier.fillMaxSize()
         ) { innerPadding ->
-            // Lama - Organizes the usage tracking information vertically
+
             Column(
                 modifier = Modifier
                     .padding(innerPadding)
@@ -60,62 +107,106 @@ class MainActivity : ComponentActivity() {
             ) {
 
                 Text(
-                    text = "Minder - Usage Tracking Test"
+                    text = "Minder - Usage Tracking"
                 )
-                // Lama - Displays whether Usage Access permission is granted
+
                 Text(
-                    text = if (hasPermission) {
-                        "Usage Access: Granted"
-                    } else {
-                        "Usage Access: Not Granted"
-                    }
+                    text =
+                        if (hasPermission) {
+                            "Usage Access: Granted"
+                        } else {
+                            "Usage Access: Not Granted"
+                        }
                 )
 
                 if (!hasPermission) {
+
                     // Lama - Opens Android settings to enable Usage Access
                     Button(
                         onClick = {
-                            usagePermissionManager.openUsageAccessSettings()
+                            usagePermissionManager
+                                .openUsageAccessSettings()
                         }
                     ) {
                         Text("Enable Usage Access")
                     }
 
                 } else {
-                    // Lama - Reads today's app usage when the user clicks the button
+
                     Button(
                         onClick = {
 
-                            // Lama - Creates the service used to retrieve app usage statistics
-                            val usageStatsService =
-                                UsageStatsService(this@MainActivity)
-                            // Lama - Retrieves today's usage data for applications
-                            val apps =
-                                usageStatsService.getTodayUsage()
+                            // Lama - Runs database operations in a coroutine
+                            lifecycleScope.launch {
 
-                            // Lama - Converts the usage data into readable minutes
-                            usageResult =
-                                if (apps.isEmpty()) {
+                                // Lama - Gets the existing local user
+                                var user =
+                                    database
+                                        .userDao()
+                                        .getUser()
 
-                                    "No usage data found"
+                                // Lama - Creates a local user if one does not exist
+                                if (user == null) {
 
-                                } else {
+                                    val newUserId =
+                                        database
+                                            .userDao()
+                                            .insertUser(
+                                                UserEntity(
+                                                    createdAt =
+                                                        System.currentTimeMillis()
+                                                )
+                                            )
 
-                                    apps.joinToString("\n") { app ->
-
-                                        val minutes =
-                                            app.usageTimeMillis / 60000
-
-                                        "${app.packageName} = $minutes min"
-                                    }
+                                    user =
+                                        database
+                                            .userDao()
+                                            .getUserById(
+                                                newUserId.toInt()
+                                            )
                                 }
+
+                                // Lama - Reads today's application usage sessions
+                                val sessions =
+                                    usageStatsService
+                                        .getTodayUsageSessions()
+
+                                // Lama - Saves sessions for applications selected by the user
+                                if (user != null) {
+
+                                    saveUsageSessionsUseCase(
+                                        userId = user.userId,
+                                        sessions = sessions
+                                    )
+                                }
+
+                                // Lama - Reads total application usage for display
+                                val apps =
+                                    usageStatsService
+                                        .getTodayUsage()
+
+                                usageResult =
+                                    if (apps.isEmpty()) {
+
+                                        "No usage data found"
+
+                                    } else {
+
+                                        apps.joinToString("\n") { app ->
+
+                                            val minutes =
+                                                app.usageTimeMillis / 60000
+
+                                            "${app.packageName} = $minutes min"
+                                        }
+                                    }
+                            }
                         }
                     ) {
                         Text("Read Today's Usage")
                     }
                 }
 
-                // Lama - Displays the retrieved application usage results
                 Text(
                     text = usageResult
                 )
@@ -123,7 +214,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Lama - Refreshes the screen after returning from Usage Access settings
     override fun onResume() {
         super.onResume()
 

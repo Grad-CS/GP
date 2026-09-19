@@ -20,6 +20,8 @@ import com.example.minder.data.local.entities.RestrictedAppEntity
 import com.example.minder.data.local.entities.UsageSessionEntity
 import com.example.minder.data.local.entities.UserEntity
 import com.example.minder.data.local.entities.UserSettingsEntity
+import android.content.Context
+import androidx.room.Room
 
 @Database(
     entities = [
@@ -55,4 +57,28 @@ abstract class MinderDatabase : RoomDatabase() {
     abstract fun extensionRequestDao(): ExtensionRequestDao
 
     abstract fun dailyUsageDao(): DailyUsageDao
+
+    companion object {
+
+        // Lama - Stores a single instance of the Minder database
+        @Volatile
+        private var INSTANCE: MinderDatabase? = null
+
+        // Lama - Creates or returns the existing Minder database instance
+        fun getDatabase(context: Context): MinderDatabase {
+
+            return INSTANCE ?: synchronized(this) {
+
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    MinderDatabase::class.java,
+                    "minder_database"
+                ).build()
+
+                INSTANCE = instance
+
+                instance
+            }
+        }
+    }
 }
