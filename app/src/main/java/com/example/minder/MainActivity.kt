@@ -24,6 +24,10 @@ import com.example.minder.services.usage.UsagePermissionManager
 import com.example.minder.services.usage.UsageStatsService
 import com.example.minder.ui.theme.MinderTheme
 import kotlinx.coroutines.launch
+import com.example.minder.data.repository.DailyUsageRepositoryImpl
+import com.example.minder.domain.usecase.usage.UpdateDailyUsageUseCase
+import java.util.Calendar
+
 
 class MainActivity : ComponentActivity() {
 
@@ -38,6 +42,10 @@ class MainActivity : ComponentActivity() {
 
     // Lama - Connects usage data with the repositories and saves usage sessions
     private lateinit var saveUsageSessionsUseCase: SaveUsageSessionsUseCase
+
+    private lateinit var updateDailyUsageUseCase: UpdateDailyUsageUseCase
+
+    private lateinit var restrictedAppRepository: RestrictedAppRepositoryImpl
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,8 +64,8 @@ class MainActivity : ComponentActivity() {
         usageStatsService =
             UsageStatsService(this)
 
-        // Lama - Initializes the restricted application repository
-        val restrictedAppRepository =
+        // Lama - Initializes the restricted application repository - Ragahd ( Edited val to be in eniter class)
+        restrictedAppRepository =
             RestrictedAppRepositoryImpl(
                 database.restrictedAppDao()
             )
@@ -67,12 +75,23 @@ class MainActivity : ComponentActivity() {
             UsageSessionRepositoryImpl(
                 database.usageSessionDao()
             )
+       //Ragahd - Initializes the daily usage repository
+        val dailyUsageRepository =
+            DailyUsageRepositoryImpl(
+                database.dailyUsageDao()
+            )
 
         // Lama - Initializes the use case that saves application usage sessions
         saveUsageSessionsUseCase =
             SaveUsageSessionsUseCase(
                 restrictedAppRepository = restrictedAppRepository,
                 usageSessionRepository = usageSessionRepository
+            )
+        //Ragahd - Initializes the use case that updates daily usage
+        updateDailyUsageUseCase =
+            UpdateDailyUsageUseCase(
+                usageSessionRepository = usageSessionRepository,
+                dailyUsageRepository = dailyUsageRepository
             )
 
         setContent {
@@ -172,12 +191,38 @@ class MainActivity : ComponentActivity() {
                                         .getTodayUsageSessions()
 
                                 // Lama - Saves sessions for applications selected by the user
+                                // Ragahd - Edited to Connect saved usage sessions to DailyUsage for enabled restricted apps
                                 if (user != null) {
 
                                     saveUsageSessionsUseCase(
                                         userId = user.userId,
                                         sessions = sessions
                                     )
+
+                                    val calendar = Calendar.getInstance().apply {
+                                        set(Calendar.HOUR_OF_DAY, 0)
+                                        set(Calendar.MINUTE, 0)
+                                        set(Calendar.SECOND, 0)
+                                        set(Calendar.MILLISECOND, 0)
+                                    }
+
+                                    val dayStart = calendar.timeInMillis
+                                    val currentTime = System.currentTimeMillis()
+
+                                    val restrictedApps =
+                                        restrictedAppRepository.getAppsByUserId(user.userId)
+
+                                    restrictedApps
+                                        .filter { it.isEnabled }
+                                        .forEach { app ->
+
+                                            updateDailyUsageUseCase(
+                                                appId = app.id,
+                                                date = dayStart,
+                                                startTime = dayStart,
+                                                endTime = currentTime
+                                            )
+                                        }
                                 }
 
                                 // Lama - Reads total application usage for display
