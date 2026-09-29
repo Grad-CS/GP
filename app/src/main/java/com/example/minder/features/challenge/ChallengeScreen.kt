@@ -3,23 +3,25 @@ package com.example.minder.features.challenge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,7 +29,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.random.Random
+import com.example.minder.domain.model.Challenge
+import com.example.minder.domain.usecase.challenge.ChallengeResult
+import com.example.minder.domain.usecase.challenge.GenerateChallengeUseCase
+import com.example.minder.domain.usecase.challenge.HandleChallengeResultUseCase
+import kotlinx.coroutines.launch
 
 private val PrimaryDark = Color(0xFF061D3A)
 private val CardColor = Color(0xFF0D3461)
@@ -36,64 +42,51 @@ private val BorderColor = Color(0xFF28639A)
 private val TextPrimary = Color.White
 private val TextSecondary = Color(0xFFB8C7D9)
 
-private data class MathQuestion(
-    val number1: Int,
-    val number2: Int,
-    val answer: Int,
-    val options: List<Int>
-)
-
-private fun generateQuestion(): MathQuestion {
-    val number1 = Random.nextInt(1, 20)
-    val number2 = Random.nextInt(1, 20)
-    val answer = number1 + number2
-
-    val wrongAnswers = mutableSetOf<Int>()
-
-    while (wrongAnswers.size < 3) {
-        val wrongAnswer = answer + Random.nextInt(-8, 9)
-
-        if (wrongAnswer >= 0 && wrongAnswer != answer) {
-            wrongAnswers.add(wrongAnswer)
-        }
-    }
-
-    val options = (wrongAnswers + answer).shuffled()
-
-    return MathQuestion(
-        number1 = number1,
-        number2 = number2,
-        answer = answer,
-        options = options
-    )
-}
-
 @Composable
 fun ChallengeScreen(
+    appId: Int,
+    interventionId: Int,
+    difficulty: String,
+    generateChallengeUseCase: GenerateChallengeUseCase,
+    handleChallengeResultUseCase: HandleChallengeResultUseCase,
     onSuccess: () -> Unit,
+    onLocked: () -> Unit,
     onClose: () -> Unit
 ) {
-    var question by remember {
-        mutableStateOf(generateQuestion())
+    var challenge by remember {
+        mutableStateOf<Challenge?>(null)
     }
 
-    var attemptsLeft by remember {
-        mutableStateOf(2)
-    }
-
-    var selectedAnswer by remember {
-        mutableStateOf<Int?>(null)
+    var userAnswer by remember {
+        mutableStateOf("")
     }
 
     var isWrong by remember {
         mutableStateOf(false)
     }
 
+    var isSubmitting by remember {
+        mutableStateOf(false)
+    }
+
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(interventionId) {
+        challenge = generateChallengeUseCase(
+            difficulty = difficulty
+        )
+    }
+
+    val currentChallenge = challenge
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(PrimaryDark)
-            .padding(horizontal = 30.dp, vertical = 30.dp)
+            .padding(
+                horizontal = 30.dp,
+                vertical = 30.dp
+            )
     ) {
 
         Text(
@@ -109,234 +102,211 @@ fun ChallengeScreen(
                 .padding(4.dp)
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 185.dp)
-                .border(
-                    width = 2.dp,
-                    color = BorderColor,
-                    shape = RoundedCornerShape(28.dp)
-                )
-                .background(
-                    color = CardColor,
-                    shape = RoundedCornerShape(28.dp)
-                )
-                .padding(
-                    horizontal = 36.dp,
-                    vertical = 28.dp
-                )
-        ) {
+        if (currentChallenge == null) {
 
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .background(
-                            color = PrimaryBlue,
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "♣",
-                        color = Color.White,
-                        fontSize = 34.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
                 Text(
-                    text = "Challenge Time!",
+                    text = "Loading challenge...",
                     color = TextPrimary,
-                    fontSize = 27.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = "Solve the equation to continue\nusing the app.",
-                    color = TextSecondary,
-                    fontSize = 16.sp,
-                    lineHeight = 25.sp
-                )
-
-                Spacer(modifier = Modifier.height(36.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(74.dp)
-                        .border(
-                            width = 1.dp,
-                            color = BorderColor,
-                            shape = RoundedCornerShape(15.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "${question.number1} + ${question.number2} = ?",
-                        color = TextPrimary,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(26.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp)
-                ) {
-
-                    ChallengeOption(
-                        value = question.options[0],
-                        selected = selectedAnswer == question.options[0],
-                        wrong = isWrong && selectedAnswer == question.options[0],
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        selectedAnswer = question.options[0]
-                        isWrong = false
-
-                        if (question.options[0] == question.answer) {
-                            onSuccess()
-                        } else {
-                            attemptsLeft--
-
-                            if (attemptsLeft > 0) {
-                                isWrong = true
-                            }
-                        }
-                    }
-
-                    ChallengeOption(
-                        value = question.options[1],
-                        selected = selectedAnswer == question.options[1],
-                        wrong = isWrong && selectedAnswer == question.options[1],
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        selectedAnswer = question.options[1]
-                        isWrong = false
-
-                        if (question.options[1] == question.answer) {
-                            onSuccess()
-                        } else {
-                            attemptsLeft--
-
-                            if (attemptsLeft > 0) {
-                                isWrong = true
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp)
-                ) {
-
-                    ChallengeOption(
-                        value = question.options[2],
-                        selected = selectedAnswer == question.options[2],
-                        wrong = isWrong && selectedAnswer == question.options[2],
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        selectedAnswer = question.options[2]
-                        isWrong = false
-
-                        if (question.options[2] == question.answer) {
-                            onSuccess()
-                        } else {
-                            attemptsLeft--
-
-                            if (attemptsLeft > 0) {
-                                isWrong = true
-                            }
-                        }
-                    }
-
-                    ChallengeOption(
-                        value = question.options[3],
-                        selected = selectedAnswer == question.options[3],
-                        wrong = isWrong && selectedAnswer == question.options[3],
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        selectedAnswer = question.options[3]
-                        isWrong = false
-
-                        if (question.options[3] == question.answer) {
-                            onSuccess()
-                        } else {
-                            attemptsLeft--
-
-                            if (attemptsLeft > 0) {
-                                isWrong = true
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "◷ You have $attemptsLeft attempts left",
-                    color = TextSecondary,
-                    fontSize = 14.sp
+                    fontSize = 18.sp
                 )
             }
+
+        } else {
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 185.dp)
+                    .border(
+                        width = 2.dp,
+                        color = BorderColor,
+                        shape = RoundedCornerShape(28.dp)
+                    )
+                    .background(
+                        color = CardColor,
+                        shape = RoundedCornerShape(28.dp)
+                    )
+                    .padding(
+                        horizontal = 36.dp,
+                        vertical = 28.dp
+                    )
+            ) {
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+
+                    Text(
+                        text = "♣",
+                        color = PrimaryBlue,
+                        fontSize = 42.sp
+                    )
+
+                    Spacer(
+                        modifier = Modifier.height(20.dp)
+                    )
+
+                    Text(
+                        text = "Challenge Time!",
+                        color = TextPrimary,
+                        fontSize = 27.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(
+                        modifier = Modifier.height(12.dp)
+                    )
+
+                    Text(
+                        text = "Solve the challenge to continue\nusing the app.",
+                        color = TextSecondary,
+                        fontSize = 16.sp
+                    )
+
+                    Spacer(
+                        modifier = Modifier.height(36.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                width = 1.dp,
+                                color = BorderColor,
+                                shape = RoundedCornerShape(15.dp)
+                            )
+                            .padding(
+                                horizontal = 16.dp,
+                                vertical = 22.dp
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+
+                        Text(
+                            text = currentChallenge.question,
+                            color = TextPrimary,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(
+                        modifier = Modifier.height(26.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = userAnswer,
+                        onValueChange = {
+                            userAnswer = it
+                            isWrong = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = {
+                            Text(
+                                text = "Your answer",
+                                color = TextSecondary
+                            )
+                        },
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = PrimaryBlue,
+                            unfocusedIndicatorColor = BorderColor,
+                            focusedLabelColor = PrimaryBlue,
+                            unfocusedLabelColor = TextSecondary,
+                            cursorColor = PrimaryBlue
+                        )
+                    )
+
+                    if (isWrong) {
+
+                        Spacer(
+                            modifier = Modifier.height(10.dp)
+                        )
+
+                        Text(
+                            text = "Incorrect answer. Try again.",
+                            color = Color(0xFFFF8A8A),
+                            fontSize = 14.sp
+                        )
+                    }
+
+                    Spacer(
+                        modifier = Modifier.height(24.dp)
+                    )
+
+                    Button(
+                        onClick = {
+
+                            if (
+                                userAnswer.isBlank() ||
+                                isSubmitting
+                            ) {
+                                return@Button
+                            }
+
+                            isSubmitting = true
+
+                            scope.launch {
+
+                                val result =
+                                    handleChallengeResultUseCase(
+                                        challenge = currentChallenge,
+                                        interventionId = interventionId,
+                                        userAnswer = userAnswer
+                                    )
+
+                                isSubmitting = false
+
+                                when (result) {
+
+                                    ChallengeResult.Correct -> {
+                                        onSuccess()
+                                    }
+
+                                    ChallengeResult.Retry -> {
+                                        userAnswer = ""
+                                        isWrong = true
+                                    }
+
+                                    ChallengeResult.Locked -> {
+                                        onLocked()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = userAnswer.isNotBlank() && !isSubmitting,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(58.dp),
+                        shape = RoundedCornerShape(15.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PrimaryBlue,
+                            disabledContainerColor = BorderColor
+                        )
+                    ) {
+
+                        Text(
+                            text = if (isSubmitting) {
+                                "Checking..."
+                            } else {
+                                "Submit Answer"
+                            },
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
-    }
-}
-
-@Composable
-private fun ChallengeOption(
-    value: Int,
-    selected: Boolean,
-    wrong: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-
-    val backgroundColor = when {
-        selected && !wrong -> PrimaryBlue
-        else -> Color.Transparent
-    }
-
-    Box(
-        modifier = modifier
-            .height(62.dp)
-            .background(
-                color = backgroundColor,
-                shape = RoundedCornerShape(15.dp)
-            )
-            .border(
-                width = 1.dp,
-                color = if (selected && !wrong) {
-                    PrimaryBlue
-                } else {
-                    BorderColor
-                },
-                shape = RoundedCornerShape(15.dp)
-            )
-            .clickable(
-                enabled = true,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = value.toString(),
-            color = TextPrimary,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold
-        )
     }
 }

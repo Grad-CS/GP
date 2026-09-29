@@ -1,6 +1,7 @@
 package com.example.minder.features.blocking
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -23,7 +25,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.minder.domain.usecase.usage.CheckDailyLimitUseCase
 import kotlinx.coroutines.delay
+import java.util.Calendar
 
 private val PrimaryDark = Color(0xFF071B33)
 private val PrimaryBlue = Color(0xFF3289F5)
@@ -33,23 +37,67 @@ private val CircleBackground = Color(0xFF0B2747)
 
 @Composable
 fun BlockingScreen(
+    appId: Int,
+    interventionId: Int,
     initialRemainingSeconds: Long,
+    checkDailyLimitUseCase: CheckDailyLimitUseCase,
     onTimeFinished: () -> Unit,
-    onTakeChallenge: () -> Unit
+    onTakeChallenge: (
+        appId: Int,
+        interventionId: Int
+    ) -> Unit
 ) {
     var remainingSeconds by remember {
         mutableLongStateOf(initialRemainingSeconds)
     }
 
-    LaunchedEffect(Unit) {
-        while (remainingSeconds > 0) {
-            delay(1000)
-            remainingSeconds--
+    var limitExceeded by remember {
+        mutableStateOf(false)
+    }
 
-            if (remainingSeconds == 0L) {
-                onTimeFinished()
-            }
+    LaunchedEffect(appId) {
+        val calendar = Calendar.getInstance()
+
+        calendar.set(
+            Calendar.HOUR_OF_DAY,
+            0
+        )
+        calendar.set(
+            Calendar.MINUTE,
+            0
+        )
+        calendar.set(
+            Calendar.SECOND,
+            0
+        )
+        calendar.set(
+            Calendar.MILLISECOND,
+            0
+        )
+
+        val today = calendar.timeInMillis
+
+        limitExceeded = checkDailyLimitUseCase(
+            appId = appId,
+            date = today
+        )
+
+        if (limitExceeded) {
+            onTakeChallenge(
+                appId,
+                interventionId
+            )
         }
+    }
+
+    LaunchedEffect(remainingSeconds) {
+        if (remainingSeconds <= 0) {
+            onTimeFinished()
+            return@LaunchedEffect
+        }
+
+        delay(1000)
+        remainingSeconds--
     }
 
     val hours = remainingSeconds / 3600
@@ -178,7 +226,13 @@ fun BlockingScreen(
                     .background(
                         PrimaryBlue,
                         RoundedCornerShape(15.dp)
-                    ),
+                    )
+                    .clickable {
+                        onTakeChallenge(
+                            appId,
+                            interventionId
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
