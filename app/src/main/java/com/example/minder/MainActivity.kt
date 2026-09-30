@@ -15,6 +15,10 @@ import com.example.minder.services.usage.UsageStatsService
 import com.example.minder.features.onboarding.OnboardingScreen
 import com.example.minder.features.questionnaire.QuestionnaireScreen
 import com.example.minder.ui.theme.MinderTheme
+import com.example.minder.data.repository.ChallengeRepositoryImpl
+import com.example.minder.data.repository.InterventionRepositoryImpl
+import com.example.minder.domain.usecase.challenge.GenerateChallengeUseCase
+import com.example.minder.domain.usecase.intervention.StartInterventionUseCase
 
 class MainActivity : ComponentActivity() {
 
@@ -48,6 +52,27 @@ class MainActivity : ComponentActivity() {
         val dailyUsageRepository =
             DailyUsageRepositoryImpl(
                 database.dailyUsageDao()
+            )
+
+        val challengeRepository =
+            ChallengeRepositoryImpl(
+                database.challengeDao()
+            )
+
+        val interventionRepository =
+            InterventionRepositoryImpl(
+                database.interventionDao()
+            )
+
+        val generateChallengeUseCase =
+            GenerateChallengeUseCase(
+                challengeRepository = challengeRepository
+            )
+
+        val startInterventionUseCase =
+            StartInterventionUseCase(
+                generateChallengeUseCase = generateChallengeUseCase,
+                interventionRepository = interventionRepository
             )
 
         saveUsageSessionsUseCase =

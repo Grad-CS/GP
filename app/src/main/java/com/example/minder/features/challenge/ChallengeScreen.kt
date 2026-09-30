@@ -31,8 +31,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.minder.domain.model.Challenge
 import com.example.minder.domain.usecase.challenge.ChallengeResult
-import com.example.minder.domain.usecase.challenge.GenerateChallengeUseCase
 import com.example.minder.domain.usecase.challenge.HandleChallengeResultUseCase
+// Gets the same challenge linked to this intervention.
+import com.example.minder.domain.usecase.intervention.GetInterventionChallengeUseCase
 import kotlinx.coroutines.launch
 
 private val PrimaryDark = Color(0xFF061D3A)
@@ -46,8 +47,8 @@ private val TextSecondary = Color(0xFFB8C7D9)
 fun ChallengeScreen(
     appId: Int,
     interventionId: Int,
-    difficulty: String,
-    generateChallengeUseCase: GenerateChallengeUseCase,
+    // Ragahd: Gets the challenge already linked to the intervention.
+    getInterventionChallengeUseCase: GetInterventionChallengeUseCase,
     handleChallengeResultUseCase: HandleChallengeResultUseCase,
     onSuccess: () -> Unit,
     onLocked: () -> Unit,
@@ -71,9 +72,10 @@ fun ChallengeScreen(
 
     val scope = rememberCoroutineScope()
 
+    // Ragahd: Loads the same challenge saved inside the intervention.
     LaunchedEffect(interventionId) {
-        challenge = generateChallengeUseCase(
-            difficulty = difficulty
+        challenge = getInterventionChallengeUseCase(
+            interventionId = interventionId
         )
     }
 
