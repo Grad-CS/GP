@@ -14,18 +14,11 @@ class UsageLimitMonitor {
     // Lama - Starts or continues the shared timer for restricted applications
     fun startMonitoring(packageName: String) {
 
+        // Lama - Updates the currently active restricted application
+        // without resetting the shared timer
         currentPackageName = packageName
 
         // Lama - Starts timing only if the shared timer is currently paused
-        if (activeStartTime == null) {
-            activeStartTime = System.currentTimeMillis()
-        }
-    }
-
-    // Lama - Updates the current restricted application without resetting the timer
-    fun switchTargetApp(packageName: String) {
-        currentPackageName = packageName
-
         if (activeStartTime == null) {
             activeStartTime = System.currentTimeMillis()
         }
@@ -46,11 +39,14 @@ class UsageLimitMonitor {
     // Lama - Returns total accumulated restricted-app usage in seconds
     fun getElapsedSeconds(): Long {
 
-        var totalUsageMillis = accumulatedUsageMillis
+        var totalUsageMillis =
+            accumulatedUsageMillis
 
-        val startTime = activeStartTime
+        val startTime =
+            activeStartTime
 
         if (startTime != null) {
+
             totalUsageMillis +=
                 System.currentTimeMillis() - startTime
         }
@@ -60,16 +56,20 @@ class UsageLimitMonitor {
 
     // Lama - Checks whether the shared temporary usage limit has been reached
     fun hasReachedLimit(): Boolean {
-        return getElapsedSeconds() >= TEST_LIMIT_SECONDS
+
+        return getElapsedSeconds() >=
+                TEST_LIMIT_SECONDS
     }
 
     // Lama - Returns the restricted application currently being used
     fun getCurrentPackage(): String? {
+
         return currentPackageName
     }
 
     // Lama - Resets the shared timer after completing an intervention cycle
     fun resetMonitoring() {
+
         activeStartTime = null
         accumulatedUsageMillis = 0L
         currentPackageName = null

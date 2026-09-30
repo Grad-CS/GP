@@ -1,62 +1,73 @@
 package com.example.minder.services.monitoring
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-
-import android.content.Intent
+import com.example.minder.data.local.database.MinderDatabase
+import com.example.minder.data.repository.ChallengeRepositoryImpl
+import com.example.minder.data.repository.InterventionRepositoryImpl
+import com.example.minder.data.repository.RestrictedAppRepositoryImpl
+import com.example.minder.data.repository.UserRepositoryImpl
+import com.example.minder.domain.repository.RestrictedAppRepository
+import com.example.minder.domain.repository.UserRepository
+import com.example.minder.domain.usecase.challenge.GenerateChallengeUseCase
+import com.example.minder.domain.usecase.intervention.StartInterventionUseCase
 import com.example.minder.features.challenge.ChallengeActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
 
 class AppAccessibilityService : AccessibilityService() {
 
-    // Lama - Tracks the accumulated usage duration across restricted content
+    companion object {
+
+        // Lama - Holds the currently running accessibility service instance
+        private var instance: AppAccessibilityService? = null
+
+        // Lama - Notifies the service that the current challenge has ended
+        fun notifyChallengeCompleted() {
+            instance?.onChallengeCompleted()
+        }
+    }
+
+
+    // Lama - Tracks accumulated usage across restricted content
     private val usageLimitMonitor = UsageLimitMonitor()
 
-    // Lama - Runs periodic usage-limit checks on the main thread
+    // Lama - Runs periodic usage checks on the main thread
     private val monitoringHandler =
         Handler(Looper.getMainLooper())
 
-    // Lama - Indicates whether periodic monitoring is currently running
+    // Lama - Coroutine scope used for database operations
+    private val serviceScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Lama - Indicates whether periodic monitoring is running
     private var isMonitoring = false
 
-    // Lama - Indicates whether a challenge is currently active
-    // and prevents usage monitoring from restarting
+    // Lama - Prevents another challenge from being created
+    // while the current challenge is active
     private var isChallengeActive = false
 
-    // Lama - Opens the challenge screen when the shared usage limit is reached
-    private fun showChallenge() {
+    // Lama - Repositories used to connect monitoring with stored app data
+    private lateinit var userRepository: UserRepository
+    private lateinit var restrictedAppRepository: RestrictedAppRepository
 
-        Log.d(
-            "MinderChallenge",
-            "Opening ChallengeActivity"
-        )
+    // Lama - Creates the challenge and intervention when the limit is reached
+    private lateinit var startInterventionUseCase: StartInterventionUseCase
 
-        val intent =
-            Intent(this, ChallengeActivity::class.java).apply {
-
-                // Lama - Required because the activity is launched from a service
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-                // Lama - Brings an existing challenge activity forward
-                // instead of creating unnecessary copies
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            }
-
-        startActivity(intent)
-    }
-
-    // Lama - Checks the shared restricted-content usage duration every second
+    // Lama - Checks the shared restricted-content usage every second
     private val monitoringRunnable = object : Runnable {
 
         override fun run() {
-
-            Log.d(
-                "MinderLimit",
-                "Runnable executed | isMonitoring = $isMonitoring"
-            )
 
             if (!isMonitoring) {
                 return
@@ -80,19 +91,23 @@ class AppAccessibilityService : AccessibilityService() {
                     "30 SECOND LIMIT REACHED for: $packageName"
                 )
 
-                // Lama - Activates the challenge state when the shared limit is reached
+                // Lama - Prevents duplicate interventions caused by
+                // repeated accessibility events
                 isChallengeActive = true
 
-                Log.d(
-                    "MinderChallenge",
-                    "Challenge activated"
-                )
+                pauseLimitMonitoring()
 
-                // Lama - Stops the current monitoring cycle
-                stopLimitMonitoring()
+                if (packageName != null) {
+                    createInterventionAndOpenChallenge(packageName)
+                } else {
 
-                // Lama - Displays the challenge to the user
-                showChallenge()
+                    Log.e(
+                        "MinderChallenge",
+                        "Cannot start intervention: package name is null"
+                    )
+
+                    isChallengeActive = false
+                }
 
                 return
             }
@@ -104,23 +119,69 @@ class AppAccessibilityService : AccessibilityService() {
         }
     }
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+
+        // Lama - Stores the active service instance so ChallengeActivity
+        // can notify monitoring when the challenge is completed
+        instance = this
+
+        // Lama - Initializes the existing Minder database
+        val database =
+            MinderDatabase.getDatabase(applicationContext)
+
+        // Lama - Gets the current local user
+        userRepository =
+            UserRepositoryImpl(
+                database.userDao()
+            )
+
+        // Lama - Resolves package names to restricted applications
+        restrictedAppRepository =
+            RestrictedAppRepositoryImpl(
+                database.restrictedAppDao()
+            )
+
+        // Lama - Uses the existing challenge engine repositories
+        val challengeRepository =
+            ChallengeRepositoryImpl(
+                database.challengeDao()
+            )
+
+        val interventionRepository =
+            InterventionRepositoryImpl(
+                database.interventionDao()
+            )
+
+        // Lama - Uses the existing challenge generation logic
+        val generateChallengeUseCase =
+            GenerateChallengeUseCase(
+                challengeRepository = challengeRepository
+            )
+
+        // Lama - Uses the existing intervention creation logic
+        startInterventionUseCase =
+            StartInterventionUseCase(
+                generateChallengeUseCase = generateChallengeUseCase,
+                interventionRepository = interventionRepository
+            )
+
+        Log.d(
+            "MinderAccessibility",
+            "Accessibility service connected"
+        )
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
 
         if (event == null) return
 
-        // Lama - Prevents monitoring from restarting while a challenge is active
+        // Lama - Prevents monitoring from restarting
+        // while the challenge is active
         if (isChallengeActive) {
-
-            Log.d(
-                "MinderChallenge",
-                "Monitoring blocked - challenge is active"
-            )
-
             return
         }
 
-        // Lama - Handles window changes and content changes
-        // to detect navigation inside YouTube
         if (
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
@@ -131,17 +192,15 @@ class AppAccessibilityService : AccessibilityService() {
         val packageName =
             event.packageName?.toString() ?: return
 
-        // Lama - Determines whether the current screen should count
-        // toward the shared restricted-content usage limit
+        // Lama - Determines whether the current content
+        // contributes to the shared restricted-content timer
         val shouldCountUsage = when (packageName) {
 
-            // Lama - TikTok usage counts toward the shared limit
             "com.zhiliaoapp.musically" -> true
 
-            // Lama - Instagram usage counts toward the shared limit
             "com.instagram.android" -> true
 
-            // Lama - Only YouTube Shorts counts toward the shared limit
+            // Lama - Only YouTube Shorts contributes to the timer
             "com.google.android.youtube" -> {
 
                 val isShorts =
@@ -155,7 +214,6 @@ class AppAccessibilityService : AccessibilityService() {
                 isShorts
             }
 
-            // Lama - Other applications do not count
             else -> false
         }
 
@@ -166,31 +224,185 @@ class AppAccessibilityService : AccessibilityService() {
 
         if (shouldCountUsage) {
 
-            // Lama - Starts or continues the shared restricted-content timer
+            // Lama - Continues the same shared interval even
+            // when the user switches between restricted apps
             usageLimitMonitor.startMonitoring(packageName)
 
-            // Lama - Starts periodic limit checking
             startLimitMonitoring()
-
-            Log.d(
-                "MinderAccessibility",
-                "Monitoring active for: $packageName"
-            )
 
         } else {
 
-            // Lama - Pauses without deleting accumulated usage
+            // Lama - Pauses the shared interval without resetting it
             pauseLimitMonitoring()
         }
     }
 
-    // Lama - Starts periodic usage-limit checking
-    private fun startLimitMonitoring() {
+    // Lama - Connects the monitoring layer with the existing
+    // user, restricted-app, challenge, and intervention layers
+    private fun createInterventionAndOpenChallenge(
+        packageName: String
+    ) {
+
+        serviceScope.launch {
+
+            try {
+
+                // Lama - Gets the existing local user
+                val user =
+                    userRepository.getUser()
+
+                if (user == null) {
+
+                    Log.e(
+                        "MinderChallenge",
+                        "Cannot start intervention: no local user found"
+                    )
+
+                    resetAfterInterventionFailure()
+                    return@launch
+                }
+
+                // Lama - Finds the selected restricted app
+                // using the detected Android package name
+                val restrictedApp =
+                    restrictedAppRepository.getAppByPackageName(
+                        userId = user.userId,
+                        packageName = packageName
+                    )
+
+                if (restrictedApp == null) {
+
+                    Log.e(
+                        "MinderChallenge",
+                        "Cannot start intervention: $packageName is not stored as a restricted app"
+                    )
+
+                    resetAfterInterventionFailure()
+                    return@launch
+                }
+
+                Log.d(
+                    "MinderChallenge",
+                    "Restricted app found | appId=${restrictedApp.id} | package=$packageName"
+                )
+
+                // Lama - Creates a real challenge and intervention
+                // using the existing challenge engine
+                val result =
+                    startInterventionUseCase(
+                        appId = restrictedApp.id,
+                        difficulty = "EASY"
+                    )
+
+                if (result == null) {
+
+                    Log.e(
+                        "MinderChallenge",
+                        "Cannot start intervention: no challenge available"
+                    )
+
+                    resetAfterInterventionFailure()
+                    return@launch
+                }
+
+                Log.d(
+                    "MinderChallenge",
+                    "Intervention created | interventionId=${result.interventionId} | challengeId=${result.challenge.id}"
+                )
+
+                // Lama - Opens the real challenge screen
+                withContext(Dispatchers.Main) {
+
+                    showChallenge(
+                        appId = restrictedApp.id,
+                        interventionId = result.interventionId
+                    )
+                }
+
+            } catch (exception: Exception) {
+
+                Log.e(
+                    "MinderChallenge",
+                    "Failed to create intervention",
+                    exception
+                )
+
+                resetAfterInterventionFailure()
+            }
+        }
+    }
+
+    // Lama - Opens ChallengeActivity with the database intervention
+    private fun showChallenge(
+        appId: Int,
+        interventionId: Int
+    ) {
+
+        Log.d(
+            "MinderChallenge",
+            "Opening ChallengeActivity | appId=$appId | interventionId=$interventionId"
+        )
+
+        val intent =
+            Intent(
+                this,
+                ChallengeActivity::class.java
+            ).apply {
+
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+                putExtra(
+                    ChallengeActivity.EXTRA_APP_ID,
+                    appId
+                )
+
+                putExtra(
+                    ChallengeActivity.EXTRA_INTERVENTION_ID,
+                    interventionId
+                )
+            }
+
+        startActivity(intent)
+    }
+
+    // Lama - Restores monitoring if intervention creation fails
+    private suspend fun resetAfterInterventionFailure() {
+
+        withContext(Dispatchers.Main) {
+
+            isChallengeActive = false
+
+
+            // Lama - Resets the completed interval so the
+            // service does not immediately trigger again
+            usageLimitMonitor.resetMonitoring()
+        }
+    }
+
+    // Lama - Unlocks monitoring after the user successfully
+// completes the current challenge
+    private fun onChallengeCompleted() {
+
+        Log.d(
+            "MinderChallenge",
+            "Challenge completed - monitoring unlocked"
+        )
+
+        // Lama - Allows accessibility events to be processed again
+        isChallengeActive = false
+
+        // Lama - Starts the next shared usage interval from zero
+        usageLimitMonitor.resetMonitoring()
 
         Log.d(
             "MinderLimit",
-            "startLimitMonitoring called | isMonitoring = $isMonitoring"
+            "New 30-second monitoring cycle is ready"
         )
+    }
+
+    // Lama - Starts periodic usage-limit checking
+    private fun startLimitMonitoring() {
 
         if (isMonitoring) {
             return
@@ -208,7 +420,7 @@ class AppAccessibilityService : AccessibilityService() {
         )
     }
 
-    // Lama - Pauses monitoring while preserving accumulated usage
+    // Lama - Pauses monitoring without deleting accumulated usage
     private fun pauseLimitMonitoring() {
 
         if (!isMonitoring) {
@@ -229,30 +441,7 @@ class AppAccessibilityService : AccessibilityService() {
         usageLimitMonitor.pauseMonitoring()
     }
 
-    // Lama - Completely stops and resets monitoring
-    // after the shared usage limit is reached
-    private fun stopLimitMonitoring() {
-
-        if (!isMonitoring) {
-            usageLimitMonitor.resetMonitoring()
-            return
-        }
-
-        Log.d(
-            "MinderLimit",
-            "Periodic monitoring STOPPED"
-        )
-
-        isMonitoring = false
-
-        monitoringHandler.removeCallbacks(
-            monitoringRunnable
-        )
-
-        usageLimitMonitor.resetMonitoring()
-    }
-
-    // Lama - Checks whether the current YouTube screen appears to be Shorts
+    // Lama - Checks whether the current YouTube screen is Shorts
     private fun isYouTubeShorts(): Boolean {
 
         val rootNode =
@@ -269,7 +458,8 @@ class AppAccessibilityService : AccessibilityService() {
         return shortsDetected
     }
 
-    // Lama - Searches the YouTube accessibility tree for Shorts indicators
+    // Lama - Searches the YouTube accessibility tree
+    // for the Shorts interface
     private fun containsShortsIndicator(
         node: AccessibilityNodeInfo
     ): Boolean {
@@ -280,7 +470,6 @@ class AppAccessibilityService : AccessibilityService() {
         val description =
             node.contentDescription?.toString()?.lowercase() ?: ""
 
-        // Lama - Temporary indicators used to identify the Shorts interface
         if (
             text == "shorts" ||
             description == "shorts"
@@ -303,8 +492,7 @@ class AppAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
 
-        // Lama - Stops monitoring if the accessibility service is interrupted
-        stopLimitMonitoring()
+        pauseLimitMonitoring()
 
         Log.d(
             "MinderAccessibility",
@@ -312,24 +500,20 @@ class AppAccessibilityService : AccessibilityService() {
         )
     }
 
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-
-        Log.d(
-            "MinderAccessibility",
-            "Accessibility service connected"
-        )
-    }
-
     override fun onDestroy() {
 
-        // Lama - Removes callbacks when the service is destroyed
         monitoringHandler.removeCallbacks(
             monitoringRunnable
         )
 
         isMonitoring = false
 
+        // Lama - Removes the stored service instance
+        instance = null
+
+        serviceScope.cancel()
+
         super.onDestroy()
     }
+
 }
