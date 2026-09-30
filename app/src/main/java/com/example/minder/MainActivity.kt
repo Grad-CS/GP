@@ -1,6 +1,7 @@
 package com.example.minder
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -20,6 +21,7 @@ import com.example.minder.data.local.entities.UserEntity
 import com.example.minder.data.repository.RestrictedAppRepositoryImpl
 import com.example.minder.data.repository.UsageSessionRepositoryImpl
 import com.example.minder.domain.usecase.usage.SaveUsageSessionsUseCase
+import com.example.minder.services.monitoring.AppMonitoringService
 import com.example.minder.services.usage.UsagePermissionManager
 import com.example.minder.services.usage.UsageStatsService
 import com.example.minder.ui.theme.MinderTheme
@@ -39,6 +41,9 @@ class MainActivity : ComponentActivity() {
     // Lama - Connects usage data with the repositories and saves usage sessions
     private lateinit var saveUsageSessionsUseCase: SaveUsageSessionsUseCase
 
+    // Lama - Detects the application currently in the foreground
+    private lateinit var appMonitoringService: AppMonitoringService
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -55,6 +60,10 @@ class MainActivity : ComponentActivity() {
         // Lama - Initializes the Android usage statistics service
         usageStatsService =
             UsageStatsService(this)
+
+        // Lama - Initializes the application monitoring service
+        appMonitoringService =
+            AppMonitoringService(this)
 
         // Lama - Initializes the restricted application repository
         val restrictedAppRepository =
@@ -217,6 +226,41 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 
+        Log.d(
+            "MinderMonitoring",
+            "onResume called"
+        )
+
+        if (::appMonitoringService.isInitialized) {
+
+            // Lama - Detects the previously opened foreground application
+            val currentApp =
+                appMonitoringService.getCurrentForegroundApp()
+
+            // Lama - Temporary target applications used for Day 4 testing
+            val targetPackages = setOf(
+                "com.zhiliaoapp.musically",  // TikTok
+                "com.instagram.android",     // Instagram
+                "com.google.android.youtube" // YouTube
+            )
+
+            // Lama - Checks whether the detected application is a target app
+            val isTarget =
+                appMonitoringService.isTargetApp(
+                    packageName = currentApp,
+                    targetPackages = targetPackages
+                )
+
+            Log.d(
+                "MinderMonitoring",
+                "Current foreground app: $currentApp"
+            )
+
+            Log.d(
+                "MinderMonitoring",
+                "Is target app: $isTarget"
+            )
+        }
         if (::usagePermissionManager.isInitialized) {
 
             setContent {
