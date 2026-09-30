@@ -134,6 +134,9 @@ class ChallengeActivity : ComponentActivity() {
                             "Challenge locked after maximum attempts"
                         )
 
+                        // Ragahd - Notifies monitoring that the locked challenge has ended
+                        AppAccessibilityService.notifyChallengeCompleted()
+
                         finish()
                     },
 
