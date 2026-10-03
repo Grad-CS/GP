@@ -27,6 +27,20 @@ interface UsageSessionDao {
         endTime: Long
     ): List<UsageSessionEntity>
 
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM usage_session
+            WHERE appId = :appId
+            AND startTime = :startTime
+            AND endTime = :endTime
+        )
+    """)
+    suspend fun sessionExists(
+        appId: Int,
+        startTime: Long,
+        endTime: Long
+    ): Boolean
+
     @Query("SELECT * FROM usage_session WHERE sessionId = :sessionId")
     suspend fun getSessionById(sessionId: Int): UsageSessionEntity?
 

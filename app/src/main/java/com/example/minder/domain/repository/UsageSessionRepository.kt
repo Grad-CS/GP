@@ -13,4 +13,10 @@ interface UsageSessionRepository {
         startTime: Long,
         endTime: Long
     ): List<UsageSession>
+
+    suspend fun sessionExists(
+        appId: Int,
+        startTime: Long,
+        endTime: Long
+    ): Boolean
 }
