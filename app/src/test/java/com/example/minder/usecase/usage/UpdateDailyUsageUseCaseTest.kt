@@ -182,6 +182,12 @@ class UpdateDailyUsageUseCaseTest {
             startTime: Long,
             endTime: Long
         ): List<UsageSession> = sessions
+
+        override suspend fun sessionExists(
+            appId: Int,
+            startTime: Long,
+            endTime: Long
+        ): Boolean = false
     }
 
     private class FakeDailyUsageRepository : DailyUsageRepository {
