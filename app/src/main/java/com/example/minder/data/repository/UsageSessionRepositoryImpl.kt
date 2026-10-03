@@ -38,6 +38,18 @@ class UsageSessionRepositoryImpl(
             )
             .map { it.toDomain() }
     }
+
+    override suspend fun sessionExists(
+        appId: Int,
+        startTime: Long,
+        endTime: Long
+    ): Boolean {
+        return usageSessionDao.sessionExists(
+            appId = appId,
+            startTime = startTime,
+            endTime = endTime
+        )
+    }
 }
 
 private fun UsageSessionEntity.toDomain(): UsageSession {

@@ -28,6 +28,9 @@ class ChallengeActivity : ComponentActivity() {
         val appId =
             intent.getIntExtra(EXTRA_APP_ID, -1)
 
+        val packageName =
+            intent.getStringExtra(EXTRA_PACKAGE_NAME)
+
         Log.d(
             "MinderChallenge",
             "ChallengeActivity opened | interventionId=$interventionId | appId=$appId"
@@ -111,7 +114,6 @@ class ChallengeActivity : ComponentActivity() {
                     handleChallengeResultUseCase =
                         handleChallengeResultUseCase,
 
-                    // Lama - Closes the challenge after a correct answer
                     onSuccess = {
 
                         Log.d(
@@ -119,13 +121,15 @@ class ChallengeActivity : ComponentActivity() {
                             "Challenge completed successfully"
                         )
 
-                        // Lama - Notifies monitoring that the challenge is finished
-                        // so a new shared usage interval can begin
+                        // Notify monitoring that the challenge has finished
                         AppAccessibilityService.notifyChallengeCompleted()
+
+                        // Move Minder task to the background
+                        // so the previously used restricted app becomes visible again
+                        moveTaskToBack(true)
 
                         finish()
                     },
-
                     // Lama - Closes the challenge after maximum attempts
                     onLocked = {
 
@@ -160,5 +164,8 @@ class ChallengeActivity : ComponentActivity() {
 
         const val EXTRA_APP_ID =
             "extra_app_id"
+
+        const val EXTRA_PACKAGE_NAME =
+            "extra_package_name"
     }
 }

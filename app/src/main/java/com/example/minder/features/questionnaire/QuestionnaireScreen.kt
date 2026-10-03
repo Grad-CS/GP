@@ -39,7 +39,7 @@ data class Question(
 
 @Composable
 fun QuestionnaireScreen(
-    onNext: () -> Unit
+    onNext: (List<String>) -> Unit
 ) {
     val questions = listOf(
 
@@ -79,6 +79,10 @@ fun QuestionnaireScreen(
 
     var currentQuestion by remember { mutableIntStateOf(0) }
     var selectedOption by remember { mutableStateOf<String?>(null) }
+
+    val answers = remember {
+        MutableList<String?>(questions.size) { null }
+    }
 
     val question = questions[currentQuestion]
 
@@ -192,16 +196,15 @@ fun QuestionnaireScreen(
                     .clickable(
                         enabled = selectedOption != null
                     ) {
+                        selectedOption?.let { answer ->
+                            answers[currentQuestion] = answer
+                        }
 
                         if (currentQuestion < questions.lastIndex) {
-
                             currentQuestion++
-                            selectedOption = null
-
+                            selectedOption = answers[currentQuestion]
                         } else {
-
-                            onNext()
-
+                            onNext(answers.filterNotNull())
                         }
                     },
                 contentAlignment = Alignment.Center

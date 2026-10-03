@@ -315,7 +315,8 @@ class AppAccessibilityService : AccessibilityService() {
 
                     showChallenge(
                         appId = restrictedApp.id,
-                        interventionId = result.interventionId
+                        interventionId = result.interventionId,
+                        packageName = packageName
                     )
                 }
 
@@ -332,15 +333,15 @@ class AppAccessibilityService : AccessibilityService() {
         }
     }
 
-    // Lama - Opens ChallengeActivity with the database intervention
     private fun showChallenge(
         appId: Int,
-        interventionId: Int
+        interventionId: Int,
+        packageName: String
     ) {
 
         Log.d(
             "MinderChallenge",
-            "Opening ChallengeActivity | appId=$appId | interventionId=$interventionId"
+            "Opening ChallengeActivity | appId=$appId | interventionId=$interventionId | package=$packageName"
         )
 
         val intent =
@@ -360,6 +361,11 @@ class AppAccessibilityService : AccessibilityService() {
                 putExtra(
                     ChallengeActivity.EXTRA_INTERVENTION_ID,
                     interventionId
+                )
+
+                putExtra(
+                    ChallengeActivity.EXTRA_PACKAGE_NAME,
+                    packageName
                 )
             }
 
