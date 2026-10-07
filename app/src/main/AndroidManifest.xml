@@ -17,6 +17,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Minder">
 
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -31,7 +32,18 @@
 
         </activity>
 
-        <!-- Lama - Accessibility service used to monitor foreground target applications -->
+        <!-- Blocking screen -->
+        <activity
+            android:name=".features.blocking.BlockingActivity"
+            android:exported="false" />
+
+        <!-- Challenge screen -->
+        <activity
+            android:name=".features.challenge.ChallengeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
+        <!-- Accessibility service used to monitor foreground target applications -->
         <service
             android:name=".services.monitoring.AppAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
@@ -46,12 +58,6 @@
                 android:resource="@xml/accessibility_service_config" />
 
         </service>
-
-        <!-- Lama - Displays the challenge when the usage limit is reached -->
-        <activity
-            android:name=".features.challenge.ChallengeActivity"
-            android:exported="false"
-            android:excludeFromRecents="true" />
 
     </application>
 
