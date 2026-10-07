@@ -81,13 +81,6 @@ fun BlockingScreen(
             appId = appId,
             date = today
         )
-
-        if (limitExceeded) {
-            onTakeChallenge(
-                appId,
-                interventionId
-            )
-        }
     }
 
     LaunchedEffect(remainingSeconds) {

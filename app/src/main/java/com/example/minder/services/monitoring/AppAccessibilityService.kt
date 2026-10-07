@@ -23,6 +23,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.minder.data.repository.DailyUsageRepositoryImpl
+import com.example.minder.domain.usecase.usage.CheckDailyLimitUseCase
+import com.example.minder.features.blocking.BlockingActivity
+import java.util.Calendar
 
 
 class AppAccessibilityService : AccessibilityService() {
@@ -63,6 +67,8 @@ class AppAccessibilityService : AccessibilityService() {
 
     // Lama - Creates the challenge and intervention when the limit is reached
     private lateinit var startInterventionUseCase: StartInterventionUseCase
+
+    private lateinit var checkDailyLimitUseCase: CheckDailyLimitUseCase
 
     // Lama - Checks the shared restricted-content usage every second
     private val monitoringRunnable = object : Runnable {
@@ -140,6 +146,17 @@ class AppAccessibilityService : AccessibilityService() {
         restrictedAppRepository =
             RestrictedAppRepositoryImpl(
                 database.restrictedAppDao()
+            )
+
+        val dailyUsageRepository =
+            DailyUsageRepositoryImpl(
+                database.dailyUsageDao()
+            )
+
+        checkDailyLimitUseCase =
+            CheckDailyLimitUseCase(
+                restrictedAppRepository = restrictedAppRepository,
+                dailyUsageRepository = dailyUsageRepository
             )
 
         // Lama - Uses the existing challenge engine repositories
@@ -286,6 +303,43 @@ class AppAccessibilityService : AccessibilityService() {
                     "Restricted app found | appId=${restrictedApp.id} | package=$packageName"
                 )
 
+                val calendar = Calendar.getInstance()
+
+                calendar.set(Calendar.HOUR_OF_DAY, 0)
+                calendar.set(Calendar.MINUTE, 0)
+                calendar.set(Calendar.SECOND, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+
+                val today = calendar.timeInMillis
+
+                val dailyLimitReached =
+                    checkDailyLimitUseCase(
+                        appId = restrictedApp.id,
+                        date = today
+                    )
+
+                Log.d(
+                    "MinderBlocking",
+                    "Daily limit check | appId=${restrictedApp.id} | reached=$dailyLimitReached"
+                )
+
+                if (dailyLimitReached) {
+
+                    Log.d(
+                        "MinderBlocking",
+                        "DAILY LIMIT REACHED | Opening BlockingActivity"
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        showBlocking(
+                            appId = restrictedApp.id,
+                            packageName = packageName
+                        )
+                    }
+
+                    return@launch
+                }
+
                 // Lama - Creates a real challenge and intervention
                 // using the existing challenge engine
                 val result =
@@ -332,7 +386,38 @@ class AppAccessibilityService : AccessibilityService() {
             }
         }
     }
+    private fun showBlocking(
+        appId: Int,
+        packageName: String
+    ) {
 
+        val intent =
+            Intent(
+                this,
+                BlockingActivity::class.java
+            ).apply {
+
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+                putExtra(
+                    BlockingActivity.EXTRA_APP_ID,
+                    appId
+                )
+
+                putExtra(
+                    BlockingActivity.EXTRA_INTERVENTION_ID,
+                    -1
+                )
+
+                putExtra(
+                    BlockingActivity.EXTRA_PACKAGE_NAME,
+                    packageName
+                )
+            }
+
+        startActivity(intent)
+    }
     private fun showChallenge(
         appId: Int,
         interventionId: Int,
