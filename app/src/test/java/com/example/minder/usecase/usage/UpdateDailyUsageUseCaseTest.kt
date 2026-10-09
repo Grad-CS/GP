@@ -1,11 +1,12 @@
-package com.example.minder.domain.usecase.usage
+package com.example.minder.usecase.usage
 
 import com.example.minder.domain.model.UsageSession
 import com.example.minder.domain.model.UsageSummary
 import com.example.minder.domain.repository.DailyUsageRepository
 import com.example.minder.domain.repository.UsageSessionRepository
+import com.example.minder.domain.usecase.usage.UpdateDailyUsageUseCase
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertEquals
+import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
 
@@ -43,7 +44,7 @@ class UpdateDailyUsageUseCaseTest {
             endTime = 2000L
         )
 
-        assertEquals(300, dailyUsageRepository.insertedUsage?.totalUsage)
+        Assert.assertEquals(300, dailyUsageRepository.insertedUsage?.totalUsage)
     }
 
     @Test
@@ -64,7 +65,7 @@ class UpdateDailyUsageUseCaseTest {
             endTime = 2000L
         )
 
-        assertEquals(600, dailyUsageRepository.insertedUsage?.totalUsage)
+        Assert.assertEquals(600, dailyUsageRepository.insertedUsage?.totalUsage)
     }
 
     @Test
@@ -91,7 +92,7 @@ class UpdateDailyUsageUseCaseTest {
             endTime = 2000L
         )
 
-        assertEquals(
+        Assert.assertEquals(
             600,
             dailyUsageRepository.updatedUsage?.totalUsage
         )
@@ -120,7 +121,7 @@ class UpdateDailyUsageUseCaseTest {
             endTime = 2000L
         )
 
-        assertEquals(
+        Assert.assertEquals(
             120,
             dailyUsageRepository.updatedUsage?.savedTime
         )
@@ -149,7 +150,7 @@ class UpdateDailyUsageUseCaseTest {
             endTime = 2000L
         )
 
-        assertEquals(
+        Assert.assertEquals(
             3,
             dailyUsageRepository.updatedUsage?.challengeCount
         )
