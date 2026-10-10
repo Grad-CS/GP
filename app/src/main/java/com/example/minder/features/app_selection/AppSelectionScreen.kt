@@ -1,17 +1,19 @@
 package com.example.minder.features.app_selection
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 private val PrimaryDark = Color(0xFF001B3D)
 private val PrimaryBlue = Color(0xFF2F8FFF)
@@ -43,17 +46,18 @@ private val BoxBackground = Color(0xFF031630)
 private val TextPrimary = Color(0xFFFFFFFF)
 private val TextSecondary = Color(0xFF8A9FB8)
 private val BorderColor = Color(0xFF143866)
+private val ErrorRed = Color(0xFFEF5350)
 
 data class SelectableApp(
     val id: String,
     val name: String,
     val packageName: String,
-    val dailyLimitMinutes: Int? = null,
-    val isOtherAppsCategory: Boolean = false
+    val isSelected: Boolean = false,
+    val dailyLimitMinutes: Int? = null // Null يعني أنه لم يحدد وقت بعد
 ) {
     fun getFormattedLimit(): String {
         return when {
-            dailyLimitMinutes == null -> "No limit set"
+            dailyLimitMinutes == null -> "Set limit"
             dailyLimitMinutes < 60 -> "${dailyLimitMinutes}m/day"
             dailyLimitMinutes % 60 == 0 -> "${dailyLimitMinutes / 60}h/day"
             else -> "${dailyLimitMinutes / 60}h ${dailyLimitMinutes % 60}m/day"
@@ -61,33 +65,13 @@ data class SelectableApp(
     }
 }
 
-// قائمة القوالب الشهيرة، تبدأ جميعها بـ null كـ Default (No limit set)
-private val defaultAppTemplates = listOf(
-    SelectableApp("1", "TikTok", "com.zhiliaoapp.musically", null),
-    SelectableApp("2", "Instagram", "com.instagram.android", null),
-    SelectableApp("3", "YouTube Shorts", "com.google.android.youtube", null),
-    SelectableApp("4", "Snapchat", "com.snapchat.android", null),
-    SelectableApp("5", "X (Twitter)", "com.twitter.android", null)
-)
-
-// التحقق من تثبيت التطبيق على الجهاز
-fun isAppInstalled(context: Context, packageName: String): Boolean {
-    return try {
-        context.packageManager.getPackageInfo(packageName, 0)
-        true
-    } catch (e: PackageManager.NameNotFoundException) {
-        false
-    }
-}
-
 // جلب جميع التطبيقات المنزلة في الجهاز
 fun getInstalledSystemApps(context: Context): List<SelectableApp> {
     val pm = context.packageManager
-    val mainIntent = android.content.Intent(android.content.Intent.ACTION_MAIN, null).apply {
-        addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+    val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+        addCategory(Intent.CATEGORY_LAUNCHER)
     }
 
-    // جلب كل التطبيقات التي يمكن فتحها ولها واجهة مستخدم
     val resolveInfos = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
         pm.queryIntentActivities(mainIntent, PackageManager.ResolveInfoFlags.of(0L))
     } else {
@@ -99,7 +83,6 @@ fun getInstalledSystemApps(context: Context): List<SelectableApp> {
 
     for (info in resolveInfos) {
         val packageName = info.activityInfo.packageName
-        // استبعاد تطبيق Minder نفسه من القائمة
         if (packageName != context.packageName) {
             val appName = info.loadLabel(pm).toString()
             apps.add(
@@ -107,6 +90,7 @@ fun getInstalledSystemApps(context: Context): List<SelectableApp> {
                     id = packageName,
                     name = appName,
                     packageName = packageName,
+                    isSelected = false,
                     dailyLimitMinutes = null
                 )
             )
@@ -116,109 +100,141 @@ fun getInstalledSystemApps(context: Context): List<SelectableApp> {
     return apps.distinctBy { it.packageName }.sortedBy { it.name }
 }
 
-
 @Composable
 fun AppSelectionScreen(
     onBackClick: () -> Unit = {},
     onDoneClick: (List<SelectableApp>) -> Unit = {}
 ) {
     val context = LocalContext.current
+    var allApps by remember { mutableStateOf<List<SelectableApp>>(emptyList()) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedAppForLimit by remember { mutableStateOf<SelectableApp?>(null) }
 
-    // إظهار التطبيقات الشائعة المثبتة فقط + إضافة زر Other Apps
-    var appsList by remember {
-        mutableStateOf(
-            defaultAppTemplates.filter { isAppInstalled(context, it.packageName) } +
-                    SelectableApp("other_apps_id", "Other Apps", "", null, isOtherAppsCategory = true)
-        )
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        allApps = getInstalledSystemApps(context)
     }
 
-    var selectedAppForLimit by remember { mutableStateOf<SelectableApp?>(null) }
-    var showOtherAppsDialog by remember { mutableStateOf(false) }
+    val filteredApps = remember(allApps, searchQuery) {
+        if (searchQuery.isBlank()) allApps
+        else allApps.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PrimaryDark)
-            .padding(horizontal = 20.dp)
-    ) {
-        Column(
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = PrimaryDark
+    ) { paddingValues ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
+                .padding(paddingValues)
+                .padding(horizontal = 20.dp)
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
             ) {
-                IconButton(onClick = onBackClick) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = TextPrimary
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary
+                        )
+                    }
+
+                    Text(
+                        text = "4/5",
+                        color = TextSecondary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
 
+                Spacer(modifier = Modifier.height(24.dp))
+
                 Text(
-                    text = "4/6",
-                    color = TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    text = "Select Apps",
+                    color = TextPrimary,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 34.sp
                 )
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                text = "Select Apps",
-                color = TextPrimary,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 34.sp
-            )
+                Text(
+                    text = "Choose apps and set a daily limit for each selected app.",
+                    color = TextSecondary,
+                    fontSize = 14.sp
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = "Choose the apps you want to set daily limits for.",
-                color = TextSecondary,
-                fontSize = 14.sp
-            )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search apps...", color = TextSecondary) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryBlue,
+                        unfocusedBorderColor = BorderColor,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        cursorColor = PrimaryBlue
+                    ),
+                    singleLine = true
+                )
 
-            Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                color = CardBackground,
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor)
-            ) {
-                LazyColumn {
-                    itemsIndexed(appsList, key = { _, app -> app.id }) { index, app ->
-                        val appIcon = remember(app.packageName) {
-                            if (app.isOtherAppsCategory) null else getAppIconBitmap(context, app.packageName)
-                        }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    shape = RoundedCornerShape(16.dp),
+                    color = CardBackground,
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(filteredApps, key = { it.id }) { app ->
+                            val appIcon = remember(app.packageName) { getAppIconBitmap(context, app.packageName) }
 
-                        AppRowItem(
-                            appName = app.name,
-                            appIcon = appIcon,
-                            formattedLimit = if (app.isOtherAppsCategory) "" else app.getFormattedLimit(),
-                            isLimitSet = app.dailyLimitMinutes != null,
-                            onClick = {
-                                if (app.isOtherAppsCategory) {
-                                    showOtherAppsDialog = true
-                                } else {
+                            AppRowItem(
+                                appName = app.name,
+                                appIcon = appIcon,
+                                isSelected = app.isSelected,
+                                formattedLimit = app.getFormattedLimit(),
+                                hasLimitSet = app.dailyLimitMinutes != null,
+                                onCheckedChange = { checked ->
+                                    allApps = allApps.map {
+                                        if (it.id == app.id) {
+                                            if (checked && it.dailyLimitMinutes == null) {
+                                                selectedAppForLimit = it
+                                            }
+                                            it.copy(isSelected = checked, dailyLimitMinutes = if (!checked) null else it.dailyLimitMinutes)
+                                        } else it
+                                    }
+                                },
+                                onLimitClick = {
                                     selectedAppForLimit = app
                                 }
-                            }
-                        )
+                            )
 
-                        if (index < appsList.size - 1) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 68.dp),
                                 thickness = 1.dp,
@@ -227,58 +243,61 @@ fun AppSelectionScreen(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        val selectedApps = allApps.filter { it.isSelected }
+                        val hasUnsetLimit = selectedApps.any { it.dailyLimitMinutes == null }
+
+                        if (hasUnsetLimit) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    message = "Please set a daily limit for all selected apps before proceeding."
+                                )
+                            }
+                        } else if (selectedApps.isEmpty()) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    message = "Please select at least one app."
+                                )
+                            }
+                        } else {
+                            onDoneClick(selectedApps)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(27.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                ) {
+                    Text(
+                        text = "Done",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = { onDoneClick(appsList.filter { !it.isOtherAppsCategory }) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(27.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
-            ) {
-                Text(
-                    text = "Done",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 
-    // Dialog تعيين الوقت المخصص والتطبيقات
     selectedAppForLimit?.let { app ->
         DailyLimitDialog(
             appName = app.name,
             currentMinutes = app.dailyLimitMinutes,
             onDismiss = { selectedAppForLimit = null },
             onLimitSet = { newMinutes ->
-                appsList = appsList.map {
-                    if (it.id == app.id) it.copy(dailyLimitMinutes = newMinutes) else it
+                allApps = allApps.map {
+                    if (it.id == app.id) {
+                        it.copy(dailyLimitMinutes = newMinutes, isSelected = true)
+                    } else it
                 }
                 selectedAppForLimit = null
-            }
-        )
-    }
-
-    // Dialog عرض قائمة باقي تطبيقات الجهاز النظام
-    if (showOtherAppsDialog) {
-        OtherAppsSelectionDialog(
-            onDismiss = { showOtherAppsDialog = false },
-            onAppSelected = { newlySelectedApp ->
-                showOtherAppsDialog = false
-                // إضافته للقائمة الرئيسية وتحديد حد زمني له مباشرة
-                if (appsList.none { it.id == newlySelectedApp.id }) {
-                    appsList = appsList.toMutableList().apply {
-                        add(appsList.size - 1, newlySelectedApp)
-                    }
-                }
-                selectedAppForLimit = newlySelectedApp
             }
         )
     }
@@ -288,15 +307,21 @@ fun AppSelectionScreen(
 private fun AppRowItem(
     appName: String,
     appIcon: ImageBitmap?,
+    isSelected: Boolean,
     formattedLimit: String,
-    isLimitSet: Boolean,
-    onClick: () -> Unit
+    hasLimitSet: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onLimitClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(64.dp)
-            .clickable { onClick() }
+            .toggleable(
+                value = isSelected,
+                role = Role.Checkbox,
+                onValueChange = onCheckedChange
+            )
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -305,6 +330,18 @@ private fun AppRowItem(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = null,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = PrimaryBlue,
+                    uncheckedColor = TextSecondary,
+                    checkmarkColor = Color.White
+                )
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             Box(
                 modifier = Modifier
                     .size(40.dp)
@@ -359,27 +396,30 @@ private fun AppRowItem(
                 text = appName,
                 color = TextPrimary,
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
             )
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (formattedLimit.isNotEmpty()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.clickable { onLimitClick() }
+        ) {
+            if (isSelected) {
                 Text(
                     text = formattedLimit,
-                    color = if (isLimitSet) PrimaryBlue else TextSecondary,
+                    color = if (hasLimitSet) PrimaryBlue else ErrorRed,
                     fontSize = 14.sp,
-                    fontWeight = if (isLimitSet) FontWeight.SemiBold else FontWeight.Normal
+                    fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = TextSecondary.copy(alpha = 0.5f),
+                    modifier = Modifier.size(20.dp)
+                )
             }
-
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = TextSecondary.copy(alpha = 0.5f),
-                modifier = Modifier.size(20.dp)
-            )
         }
     }
 }
@@ -389,18 +429,18 @@ private fun DailyLimitDialog(
     appName: String,
     currentMinutes: Int?,
     onDismiss: () -> Unit,
-    onLimitSet: (Int?) -> Unit
+    onLimitSet: (Int) -> Unit
 ) {
+    val initialMinutes = currentMinutes ?: 45
     var isCustomSelected by remember { mutableStateOf(currentMinutes != null && currentMinutes !in listOf(15, 30, 60, 120)) }
-    var selectedMinutes by remember { mutableStateOf(currentMinutes) }
-    var customInputText by remember { mutableStateOf((currentMinutes ?: 45).toString()) }
+    var selectedMinutes by remember { mutableStateOf(initialMinutes) }
+    var customInputText by remember { mutableStateOf(initialMinutes.toString()) }
 
     val presetOptions = listOf(
         "15 min" to 15,
         "30 min" to 30,
         "1 hour" to 60,
-        "2 hours" to 120,
-        "No limit" to null
+        "2 hours" to 120
     )
 
     AlertDialog(
@@ -445,7 +485,6 @@ private fun DailyLimitDialog(
                     }
                 }
 
-                // خيار Custom للإدخال اليدوي المخصص
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -469,7 +508,6 @@ private fun DailyLimitDialog(
                     Text(text = "Custom", color = TextPrimary, fontSize = 15.sp)
                 }
 
-                // إظهار مربع إدخال عدد الدقائق المخصص عند اختيار Custom
                 if (isCustomSelected) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Box(
@@ -510,7 +548,7 @@ private fun DailyLimitDialog(
                 onClick = {
                     if (isCustomSelected) {
                         val parsed = customInputText.toIntOrNull()
-                        onLimitSet(if (parsed != null && parsed > 0) parsed else null)
+                        onLimitSet(if (parsed != null && parsed > 0) parsed else 45)
                     } else {
                         onLimitSet(selectedMinutes)
                     }
@@ -522,78 +560,6 @@ private fun DailyLimitDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel", color = TextSecondary)
-            }
-        }
-    )
-}
-
-@Composable
-private fun OtherAppsSelectionDialog(
-    onDismiss: () -> Unit,
-    onAppSelected: (SelectableApp) -> Unit
-) {
-    val context = LocalContext.current
-    var searchQuery by remember { mutableStateOf("") }
-    val allInstalledApps = remember { getInstalledSystemApps(context) }
-
-    val filteredApps = remember(searchQuery) {
-        if (searchQuery.isBlank()) allInstalledApps
-        else allInstalledApps.filter { it.name.contains(searchQuery, ignoreCase = true) }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = CardBackground,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Text(text = "Select from Other Apps", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // حقل البحث داخل التطبيقات
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search apps...", color = TextSecondary) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryBlue,
-                        unfocusedBorderColor = BorderColor,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LazyColumn(modifier = Modifier.height(300.dp)) {
-                    items(filteredApps) { app ->
-                        val appIcon = remember(app.packageName) { getAppIconBitmap(context, app.packageName) }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onAppSelected(app) }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (appIcon != null) {
-                                Image(bitmap = appIcon, contentDescription = app.name, modifier = Modifier.size(32.dp).clip(CircleShape))
-                            } else {
-                                Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(BoxBackground))
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(text = app.name, color = TextPrimary, fontSize = 15.sp)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = TextSecondary)
             }
         }
     )

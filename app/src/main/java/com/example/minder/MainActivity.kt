@@ -86,6 +86,18 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    is AppScreen.Permissions -> {
+                        PermissionsScreen(
+                            onBackClick = {
+                                appStateHandler.navigateTo(AppScreen.Onboarding)
+                            },
+                            onNextClick = {
+                                // بعد الأذونات، ننتقل إلى شاشة الأسئلة
+                                appStateHandler.navigateTo(AppScreen.Questionnaire)
+                            }
+                        )
+                    }
+
                     is AppScreen.Questionnaire -> {
                         QuestionnaireScreen(
                             onNext = { answers ->
@@ -94,7 +106,7 @@ class MainActivity : ComponentActivity() {
                                     val score = scoreQuestionnaireUseCase(answers = answers)
                                     saveQuestionnaireResultUseCase(score = score)
 
-                                    // الانتقال لشاشة اختيار التطبيقات وتحديد حدود الاستخدام
+                                    // الانتقال لشاشة اختيار التطبيقات
                                     appStateHandler.navigateTo(AppScreen.AppSelection)
                                 }
                             }
@@ -115,27 +127,19 @@ class MainActivity : ComponentActivity() {
                     }
 
                     is AppScreen.ChallengeSetup -> {
+                        // حساب الحد الأدنى للحدود اليومية للتطبيقات المختارة لتمريره كقيمة للتحقق
+                        val calculatedLimit = selectedAppsList.minOfOrNull { it.dailyLimitMinutes ?: Int.MAX_VALUE } ?: 60
+
                         ChallengeSetupScreen(
+                            dailyLimitMinutes = calculatedLimit, // تمرير القيمة هنا لحل الخطأ
                             onBackClick = {
-                                appStateHandler.navigateTo(AppScreen.AppSelection)
+                                appStateHandler.navigateTo(screen = AppScreen.AppSelection)
                             },
                             onNextClick = { intervalMinutes ->
                                 Log.d("MinderSetup", "Challenge interval = $intervalMinutes mins")
-                                // الانتقال لشاشة الأذونات 5/6 بعد ضبط التحدي
-                                appStateHandler.navigateTo(AppScreen.Permissions)
-                            }
-                        )
-                    }
-
-                    is AppScreen.Permissions -> {
-                        PermissionsScreen(
-                            onBackClick = {
-                                appStateHandler.navigateTo(AppScreen.ChallengeSetup)
-                            },
-                            onNextClick = {
                                 lifecycleScope.launch {
                                     completeOnboardingUseCase()
-                                    appStateHandler.navigateTo(AppScreen.Home)
+                                    appStateHandler.navigateTo(screen = AppScreen.Home)
                                 }
                             }
                         )
@@ -156,7 +160,8 @@ class MainActivity : ComponentActivity() {
                     else -> {
                         WelcomeScreen(
                             onGetStartedClick = {
-                                appStateHandler.navigateTo(AppScreen.Questionnaire)
+                                // عند الضغط على البدء، نتوجه لشاشة الأذونات أولاً
+                                appStateHandler.navigateTo(AppScreen.Permissions)
                             }
                         )
                     }

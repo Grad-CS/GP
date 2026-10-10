@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.minder.services.usage.UsagePermissionManager
 
 private val PrimaryDark = Color(0xFF001B3D)
 private val PrimaryBlue = Color(0xFF2F8FFF)
@@ -36,6 +37,7 @@ private val IconBoxBackground = Color(0xFF1652A0)
 private val TextPrimary = Color(0xFFFFFFFF)
 private val TextSecondary = Color(0xFF8A9FB8)
 private val BorderColor = Color(0xFF143866)
+private val ErrorColor = Color(0xFFFF5252)
 
 data class PermissionItemData(
     val title: String,
@@ -50,6 +52,10 @@ fun PermissionsScreen(
     onNextClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val usagePermissionManager = remember { UsagePermissionManager(context) }
+
+    // حالة لإظهار رسالة التنبيه
+    var showErrorAlert by remember { mutableStateOf(false) }
 
     val permissionsList = remember {
         listOf(
@@ -114,14 +120,6 @@ fun PermissionsScreen(
                         tint = TextPrimary
                     )
                 }
-
-                Text(
-                    text = "5" +
-                            "6/6",
-                    color = TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
-                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -158,6 +156,17 @@ fun PermissionsScreen(
                 }
             }
 
+            // عرض رسالة الخطأ إذا حاول المتابعة بدون منح الصلاحيات الإلزامية
+            if (showErrorAlert) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "الرجاء منح الصلاحيات الإلزامية (مثل Usage Access) للمتابعة.",
+                    color = ErrorColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
             Column(
@@ -165,7 +174,17 @@ fun PermissionsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
-                    onClick = onNextClick,
+                    onClick = {
+                        // التحقق من الصلاحيات قبل الانتقال (مثال: استخدام Usage Access كصلاحية إلزامية)
+                        val hasAccess = usagePermissionManager.hasUsageAccess()
+
+                        if (hasAccess) {
+                            showErrorAlert = false
+                            onNextClick()
+                        } else {
+                            showErrorAlert = true
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp),

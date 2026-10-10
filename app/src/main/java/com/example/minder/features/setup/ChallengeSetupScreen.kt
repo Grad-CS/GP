@@ -1,6 +1,5 @@
 package com.example.minder.features.setup
 
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +24,7 @@ private val CardBackground = Color(0xFF082247)
 private val TextPrimary = Color(0xFFFFFFFF)
 private val TextSecondary = Color(0xFF8A9FB8)
 private val BorderColor = Color(0xFF143866)
+private val ErrorRed = Color(0xFFFF5252)
 
 data class ChallengeIntervalOption(
     val minutes: Int,
@@ -40,10 +40,12 @@ val challengeIntervals = listOf(
 
 @Composable
 fun ChallengeSetupScreen(
+    dailyLimitMinutes: Int, // القيمة المستلمة ديناميكياً من التطبيقات المختارة (سواء كانت 15, 30, 60 أو Custom)
     onBackClick: () -> Unit = {},
     onNextClick: (selectedIntervalMinutes: Int) -> Unit = {}
 ) {
     var selectedInterval by remember { mutableIntStateOf(15) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -74,7 +76,7 @@ fun ChallengeSetupScreen(
                 }
 
                 Text(
-                    text = "5/6",
+                    text = "5/5",
                     color = TextSecondary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
@@ -123,11 +125,11 @@ fun ChallengeSetupScreen(
                             )
                             .clickable {
                                 selectedInterval = option.minutes
+                                errorMessage = null // إزالة رسالة الخطأ عند تغيير الاختيار
                             }
                             .padding(horizontal = 20.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Custom Radio Outer/Inner Circle
                         Box(
                             modifier = Modifier
                                 .size(22.dp)
@@ -161,11 +163,30 @@ fun ChallengeSetupScreen(
                 }
             }
 
+            // عرض رسالة الخطأ في حال عدم التوافق
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = errorMessage!!,
+                    color = ErrorRed,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
-            // Next Button
+            // Next Button مع معالجة التحقق ومنع الانتقال
             Button(
-                onClick = { onNextClick(selectedInterval) },
+                onClick = {
+                    // التحقق: هل الفاصل الزمني للتحدي أكبر من الحد اليومي المحدد للتطبيق؟
+                    if (selectedInterval > dailyLimitMinutes) {
+                        errorMessage = "Warning: Challenge interval ($selectedInterval mins) cannot exceed the app's daily limit ($dailyLimitMinutes mins)!"
+                    } else {
+                        errorMessage = null
+                        onNextClick(selectedInterval) // الانتقال فقط عند استيفاء الشرط
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),

@@ -14,9 +14,9 @@ sealed class AppScreen {
 
     data object AppSelection : AppScreen()
 
-    object UsageLimit : AppScreen()       // 3/6
+    object UsageLimit : AppScreen()
 
-    object ChallengeSetup : AppScreen()   // 4/6
+    object ChallengeSetup : AppScreen()
 
     data object Permissions : AppScreen()
 
