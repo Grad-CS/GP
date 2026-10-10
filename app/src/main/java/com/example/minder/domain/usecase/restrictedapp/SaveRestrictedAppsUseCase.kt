@@ -7,20 +7,20 @@ class SaveRestrictedAppsUseCase(
     private val restrictedAppRepository: RestrictedAppRepository
 ) {
 
+
     suspend operator fun invoke(
         userId: Int,
         selectedApps: List<SelectedApp>
     ) {
         selectedApps.forEach { app ->
-
-            val existingApp =
-                restrictedAppRepository.getAppByPackageName(
-                    userId = userId,
-                    packageName = app.packageName
-                )
+            //Ragahd-: Find an existing app using its package name and user ID
+            val existingApp = restrictedAppRepository.getAppByPackageName(
+                userId = userId,
+                packageName = app.packageName
+            )
 
             if (existingApp == null) {
-
+                //Ragahd-: Create and save a new restricted app
                 val restrictedApp = RestrictedApp(
                     id = 0,
                     userId = userId,
@@ -32,9 +32,19 @@ class SaveRestrictedAppsUseCase(
                 )
 
                 restrictedAppRepository.addApp(restrictedApp)
+            } else {
+                //Ragahd-: Update the existing app with the newly selected daily limit
+                restrictedAppRepository.updateApp(
+                    existingApp.copy(
+                        appName = app.appName,
+                        dailyLimit = app.dailyLimit,
+                        isEnabled = true
+                    )
+                )
             }
         }
     }
+
 }
 
 data class SelectedApp(

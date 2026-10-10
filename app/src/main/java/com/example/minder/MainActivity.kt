@@ -43,6 +43,15 @@ import com.example.minder.services.usage.UsageStatsService
 import com.example.minder.ui.theme.MinderTheme
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import com.example.minder.data.repository.UserSettingsRepositoryImpl
+import com.example.minder.domain.model.UserSettings
+import com.example.minder.domain.usecase.restrictedapp.SaveRestrictedAppsUseCase
+import com.example.minder.domain.usecase.restrictedapp.SelectedApp
+import com.example.minder.domain.usecase.settings.ValidateChallengeIntervalUseCase
+//Ragahd-: For notifications to show to user
+import android.widget.Toast
+//Ragahd-: Import LaunchedEffect to restore saved apps when Home opens
+import androidx.compose.runtime.LaunchedEffect
 
 class MainActivity : ComponentActivity() {
 
@@ -52,6 +61,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var saveUsageSessionsUseCase: SaveUsageSessionsUseCase
     private lateinit var updateDailyUsageUseCase: UpdateDailyUsageUseCase
     private lateinit var restrictedAppRepository: RestrictedAppRepositoryImpl
+    private lateinit var userSettingsRepository: UserSettingsRepositoryImpl
+    private lateinit var saveRestrictedAppsUseCase: SaveRestrictedAppsUseCase
+    private lateinit var validateChallengeIntervalUseCase: ValidateChallengeIntervalUseCase
     private lateinit var userRepository: UserRepositoryImpl
 
     private lateinit var initializeLocalUserUseCase: InitializeLocalUserUseCase
@@ -59,6 +71,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var completeOnboardingUseCase: CompleteOnboardingUseCase
 
     private var localUserInitialized = false
+    //Ragahd-: Track whether startup initialization and splash have finished
+    private var servicesInitialized = false
+    private var splashFinished = false
 
     private lateinit var appMonitoringService: AppMonitoringService
     private lateinit var scoreQuestionnaireUseCase: ScoreQuestionnaireUseCase
@@ -66,6 +81,25 @@ class MainActivity : ComponentActivity() {
 
     val appStateHandler = AppStateHandler()
 
+    //Ragahd-: Navigate according to the saved onboarding state
+    private fun navigateAfterSplash() {
+        lifecycleScope.launch {
+            try {
+                val onboardingCompleted = getOnboardingCompletedUseCase()
+
+                appStateHandler.navigateTo(
+                    if (onboardingCompleted) {
+                        AppScreen.Home
+                    } else {
+                        AppScreen.Onboarding
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to read onboarding state", e)
+                appStateHandler.navigateTo(AppScreen.Onboarding)
+            }
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -77,11 +111,48 @@ class MainActivity : ComponentActivity() {
                 // الاحتفاظ بالتطبيقات التي حددها المستخدم مع حدودها الزمنية
                 var selectedAppsList by remember { mutableStateOf<List<SelectableApp>>(emptyList()) }
 
+                //Ragahd-: Restore selected apps from Room when Home opens
+                LaunchedEffect(currentScreen) {
+                    if (currentScreen is AppScreen.Home && ::restrictedAppRepository.isInitialized) {
+                        try {
+                            val user = userRepository.getUser()
+
+                            if (user != null) {
+                                val savedApps = restrictedAppRepository
+                                    .getAppsByUserId(user.userId)
+                                    .filter { it.isEnabled }
+
+                                selectedAppsList = savedApps.map { app ->
+                                    SelectableApp(
+                                        id = app.packageName,
+                                        name = app.appName,
+                                        packageName = app.packageName,
+                                        isSelected = true,
+                                        dailyLimitMinutes = app.dailyLimit
+                                    )
+                                }
+
+                                Log.d(
+                                    "MainActivity",
+                                    "Restored ${selectedAppsList.size} selected apps from Room"
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MainActivity", "Failed to restore selected apps", e)
+                        }
+                    }
+                }
+
                 when (currentScreen) {
+                    //Ragahd-: Wait for initialization before reading onboarding state
                     is AppScreen.Splash -> {
                         SplashScreen(
                             onSplashTimeout = {
-                                appStateHandler.navigateTo(AppScreen.Onboarding)
+                                splashFinished = true
+
+                                if (servicesInitialized) {
+                                    navigateAfterSplash()
+                                }
                             }
                         )
                     }
@@ -118,11 +189,66 @@ class MainActivity : ComponentActivity() {
                             onBackClick = {
                                 appStateHandler.navigateTo(AppScreen.Questionnaire)
                             },
+
                             onDoneClick = { selectedApps ->
-                                Log.d("MinderAppSelection", "Selected apps count = ${selectedApps.size}")
-                                selectedAppsList = selectedApps
-                                appStateHandler.navigateTo(AppScreen.ChallengeSetup)
+                                lifecycleScope.launch {
+                                    //Ragahd-: Make sure user have selected at least one app
+                                    if (selectedApps.isEmpty()) {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "Please select at least one app.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+
+                                    //Ragahd-: Exclude the apps does not have a proper daily limit
+                                    val appsToSave = selectedApps.filter {
+                                        (it.dailyLimitMinutes ?: 0) > 0
+                                    }
+
+                                    if (appsToSave.isEmpty()) {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "Please set a valid daily limit for your apps.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+
+                                    //Ragahd-: bring user and store apps with his account
+                                    val user = userRepository.getUser() ?: run {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "Unable to load user data.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+
+                                    //Ragahd-: Reconvert selected apps to be stored
+                                    val appsToSaveAsDomain = appsToSave.map { app ->
+                                        SelectedApp(
+                                            appName = app.name,
+                                            packageName = app.packageName,
+                                            dailyLimit = app.dailyLimitMinutes!!
+                                        )
+                                    }
+
+                                    //Ragahd-: save selected apps in Room Database
+                                    saveRestrictedAppsUseCase(
+                                        userId = user.userId,
+                                        selectedApps = appsToSaveAsDomain
+                                    )
+
+                                    //Ragahd-: update current list to challenge screen
+                                    selectedAppsList = appsToSave
+
+                                    //Ragahd-: go to challenge setup after storing data
+                                    appStateHandler.navigateTo(AppScreen.ChallengeSetup)
+                                }
                             }
+
                         )
                     }
 
@@ -135,13 +261,99 @@ class MainActivity : ComponentActivity() {
                             onBackClick = {
                                 appStateHandler.navigateTo(screen = AppScreen.AppSelection)
                             },
+
                             onNextClick = { intervalMinutes ->
-                                Log.d("MinderSetup", "Challenge interval = $intervalMinutes mins")
                                 lifecycleScope.launch {
-                                    completeOnboardingUseCase()
-                                    appStateHandler.navigateTo(screen = AppScreen.Home)
+                                    try {
+                                        //Ragahd-: get local user before saving challenge sittings
+                                        val user = userRepository.getUser()
+                                        if (user == null) {
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Unable to load user data.",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            return@launch
+                                        }
+
+                                        //Ragahd-: Making sure that the user has saved restricted apps
+                                        val savedApps = restrictedAppRepository.getAppsByUserId(user.userId)
+                                            .filter { it.isEnabled }
+
+                                        if (savedApps.isEmpty()) {
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Please select at least one app.",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            appStateHandler.navigateTo(AppScreen.AppSelection)
+                                            return@launch
+                                        }
+
+
+                                       //Ragahd-: Validate every selected app before saving challenge settings
+                                        val allAppsValid = savedApps.all { app ->
+                                            intervalMinutes < app.dailyLimit
+                                        }
+
+                                        if (!allAppsValid) {
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Challenge interval must be less than every selected app's daily limit.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            return@launch
+                                        }
+
+                                      //Ragahd-: Create challenge settings or update existing settings after validation
+                                        val existingSettings =
+                                            userSettingsRepository.getSettingsByUserId(user.userId)
+
+                                        if (existingSettings == null) {
+                                            userSettingsRepository.saveSettings(
+                                                UserSettings(
+                                                    settingsId = 0,
+                                                    userId = user.userId,
+                                                    challengeDifficulty = "MEDIUM",
+                                                    challengeInterval = intervalMinutes,
+                                                    blockingEnabled = false,
+                                                    usageAccessGranted = usagePermissionManager.hasUsageAccess()
+                                                )
+                                            )
+                                        } else {
+                                            userSettingsRepository.updateSettings(
+                                                existingSettings.copy(
+                                                    challengeInterval = intervalMinutes,
+                                                    usageAccessGranted = usagePermissionManager.hasUsageAccess()
+                                                )
+                                            )
+                                        }
+
+                                        if (!allAppsValid) {
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Challenge interval must be less than every selected app's daily limit.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            return@launch
+                                        }
+
+                                        //Ragahd-: finish setting user after making sure of every thing and saving data
+                                        completeOnboardingUseCase()
+                                        appStateHandler.navigateTo(AppScreen.Home)
+
+                                    } catch (e: Exception) {
+                                        //Ragahd-: show notification when there is an error
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "Unable to save challenge settings. Please try again.",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        Log.e("MainActivity", "Failed to save challenge settings", e)
+                                    }
                                 }
                             }
+
                         )
                     }
 
@@ -195,6 +407,16 @@ class MainActivity : ComponentActivity() {
                 saveQuestionnaireResultUseCase = SaveQuestionnaireResultUseCase(repository = onboardingStateRepository)
 
                 restrictedAppRepository = RestrictedAppRepositoryImpl(database.restrictedAppDao())
+                userSettingsRepository = UserSettingsRepositoryImpl(database.userSettingsDao())
+
+                saveRestrictedAppsUseCase = SaveRestrictedAppsUseCase(
+                    restrictedAppRepository = restrictedAppRepository
+                )
+
+                validateChallengeIntervalUseCase = ValidateChallengeIntervalUseCase(
+                    userSettingsRepository = userSettingsRepository,
+                    restrictedAppRepository = restrictedAppRepository
+                )
                 val usageSessionRepository = UsageSessionRepositoryImpl(database.usageSessionDao())
                 val dailyUsageRepository = DailyUsageRepositoryImpl(database.dailyUsageDao())
 
@@ -208,8 +430,15 @@ class MainActivity : ComponentActivity() {
                     dailyUsageRepository = dailyUsageRepository
                 )
 
+                //Ragahd-: Mark services ready before routing from splash
                 initializeLocalUserUseCase()
                 localUserInitialized = true
+                servicesInitialized = true
+
+                if (splashFinished) {
+                    navigateAfterSplash()
+                }
+
                 syncUsageData()
             } catch (e: Exception) {
                 Log.e("MainActivity", "Error initializing services", e)
