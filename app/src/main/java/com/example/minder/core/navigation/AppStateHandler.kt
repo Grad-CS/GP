@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class AppStateHandler {
 
     private val _currentScreen =
-        MutableStateFlow<AppScreen>(AppScreen.Onboarding)
+        MutableStateFlow<AppScreen>(AppScreen.Splash)
 
     val currentScreen: StateFlow<AppScreen> =
         _currentScreen.asStateFlow()

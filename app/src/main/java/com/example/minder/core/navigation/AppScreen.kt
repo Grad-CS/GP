@@ -2,6 +2,10 @@ package com.example.minder.core.navigation
 
 sealed class AppScreen {
 
+    data object Splash : AppScreen()
+
+    data object Welcome : AppScreen()
+
     data object Onboarding : AppScreen()
 
     data object Questionnaire : AppScreen()
@@ -10,9 +14,11 @@ sealed class AppScreen {
 
     data object AppSelection : AppScreen()
 
-    data object Permissions : AppScreen()
+    object UsageLimit : AppScreen()
 
-    data object Setup : AppScreen()
+    object ChallengeSetup : AppScreen()
+
+    data object Permissions : AppScreen()
 
     data object Statistics : AppScreen()
 

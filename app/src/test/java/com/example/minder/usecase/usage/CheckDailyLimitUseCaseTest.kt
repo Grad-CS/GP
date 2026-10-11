@@ -1,12 +1,12 @@
-package com.example.minder.domain.usecase.usage
+package com.example.minder.usecase.usage
 
 import com.example.minder.domain.model.RestrictedApp
 import com.example.minder.domain.model.UsageSummary
 import com.example.minder.domain.repository.DailyUsageRepository
 import com.example.minder.domain.repository.RestrictedAppRepository
+import com.example.minder.domain.usecase.usage.CheckDailyLimitUseCase
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
 
@@ -36,7 +36,7 @@ class CheckDailyLimitUseCaseTest {
 
         val result = useCase(1, 1000L)
 
-        assertFalse(result)
+        Assert.assertFalse(result)
     }
 
     @Test
@@ -48,7 +48,7 @@ class CheckDailyLimitUseCaseTest {
 
         val result = useCase(1, 1000L)
 
-        assertTrue(result)
+        Assert.assertTrue(result)
     }
 
     @Test
@@ -60,7 +60,7 @@ class CheckDailyLimitUseCaseTest {
 
         val result = useCase(1, 1000L)
 
-        assertTrue(result)
+        Assert.assertTrue(result)
     }
 
     @Test
@@ -70,7 +70,7 @@ class CheckDailyLimitUseCaseTest {
 
         val result = useCase(1, 1000L)
 
-        assertFalse(result)
+        Assert.assertFalse(result)
     }
 
     @Test
@@ -79,7 +79,7 @@ class CheckDailyLimitUseCaseTest {
 
         val result = useCase(1, 1000L)
 
-        assertFalse(result)
+        Assert.assertFalse(result)
     }
 
     private fun createApp(dailyLimit: Int): RestrictedApp {
