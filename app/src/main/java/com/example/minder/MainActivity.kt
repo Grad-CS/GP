@@ -111,6 +111,10 @@ class MainActivity : ComponentActivity() {
                 // الاحتفاظ بالتطبيقات التي حددها المستخدم مع حدودها الزمنية
                 var selectedAppsList by remember { mutableStateOf<List<SelectableApp>>(emptyList()) }
 
+
+                var isEditingAppsFromHome by remember { mutableStateOf(false) }
+
+
                 //Ragahd-: Restore selected apps from Room when Home opens
                 LaunchedEffect(currentScreen) {
                     if (currentScreen is AppScreen.Home && ::restrictedAppRepository.isInitialized) {
@@ -186,9 +190,19 @@ class MainActivity : ComponentActivity() {
 
                     is AppScreen.AppSelection -> {
                         AppSelectionScreen(
-                            onBackClick = {
-                                appStateHandler.navigateTo(AppScreen.Questionnaire)
+
+                            //Ragahd-: Restore saved apps only when editing from Home
+                            initialSelectedApps = if (isEditingAppsFromHome) {
+                                selectedAppsList
+                            } else {
+                                emptyList()
                             },
+                             onBackClick = {
+                               appStateHandler.navigateTo(AppScreen.Questionnaire)
+                             },
+
+
+
 
                             onDoneClick = { selectedApps ->
                                 lifecycleScope.launch {
@@ -241,11 +255,12 @@ class MainActivity : ComponentActivity() {
                                         selectedApps = appsToSaveAsDomain
                                     )
 
-                                    //Ragahd-: update current list to challenge screen
+                                    //Ragahd-: Update the selected apps displayed on Home
                                     selectedAppsList = appsToSave
 
-                                    //Ragahd-: go to challenge setup after storing data
+                                    //Ragahd-: Continue onboarding to challenge setup
                                     appStateHandler.navigateTo(AppScreen.ChallengeSetup)
+
                                 }
                             }
 
@@ -360,9 +375,11 @@ class MainActivity : ComponentActivity() {
                     is AppScreen.Home -> {
                         HomeScreen(
                             selectedApps = selectedAppsList,
+
                             onSettingsClick = {
                                 // التوجه لصفحة الإعدادات
                             },
+
                             onTabSelected = { tabIndex ->
                                 Log.d("MinderHome", "Tab index clicked: $tabIndex")
                             }
