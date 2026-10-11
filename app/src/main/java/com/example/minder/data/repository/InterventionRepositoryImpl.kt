@@ -9,6 +9,15 @@ class InterventionRepositoryImpl(
     private val interventionDao: InterventionDao
 ) : InterventionRepository {
 
+    // Lama - Returns the pending intervention as a domain model
+    override suspend fun getPendingInterventionForUser(
+        userId: Int
+    ): Intervention? {
+        return interventionDao
+            .getPendingInterventionForUser(userId)
+            ?.toDomain()
+    }
+
     override suspend fun addIntervention(
         intervention: Intervention
     ): Long {
@@ -22,6 +31,16 @@ class InterventionRepositoryImpl(
     ): Intervention? {
         return interventionDao
             .getInterventionById(interventionId)
+            ?.toDomain()
+    }
+
+    // Lama - Retrieves the pending intervention from Room
+    override suspend fun getPendingIntervention(
+        appId: Int
+    ): Intervention? {
+
+        return interventionDao
+            .getPendingIntervention(appId)
             ?.toDomain()
     }
 

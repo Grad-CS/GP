@@ -52,6 +52,35 @@ interface InterventionDao {
         status: String
     )
 
+
+    // Lama - Returns the latest pending challenge for a restricted app
+    @Query("""
+    SELECT * FROM intervention
+    WHERE appId = :appId
+    AND status = 'PENDING'
+    ORDER BY triggerTime DESC, interventionId DESC
+    LIMIT 1
+    """)
+
+    suspend fun getPendingIntervention(
+        appId: Int
+    ): InterventionEntity?
+
+    // Lama - Finds the latest pending challenge across all enabled restricted apps
+    @Query("""
+    SELECT i.*
+    FROM intervention AS i
+    INNER JOIN restricted_app AS r
+        ON i.appId = r.appId
+    WHERE r.userId = :userId
+      AND r.isEnabled = 1
+      AND i.status = 'PENDING'
+    ORDER BY i.triggerTime DESC, i.interventionId DESC
+    LIMIT 1
+    """)
+    suspend fun getPendingInterventionForUser(
+        userId: Int
+    ): InterventionEntity?
     @Update
     suspend fun updateIntervention(intervention: InterventionEntity)
 

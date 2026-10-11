@@ -27,6 +27,7 @@ import com.example.minder.data.repository.DailyUsageRepositoryImpl
 import com.example.minder.domain.usecase.usage.CheckDailyLimitUseCase
 import com.example.minder.features.blocking.BlockingActivity
 import java.util.Calendar
+import com.example.minder.domain.repository.InterventionRepository
 
 
 class AppAccessibilityService : AccessibilityService() {
@@ -39,6 +40,10 @@ class AppAccessibilityService : AccessibilityService() {
         // Lama - Notifies the service that the current challenge has ended
         fun notifyChallengeCompleted() {
             instance?.onChallengeCompleted()
+        }
+        // Lama - Notifies monitoring when the challenge screen is no longer visible
+        fun notifyChallengeHidden(interventionId: Int) {
+            instance?.onChallengeHidden(interventionId)
         }
     }
 
@@ -61,6 +66,18 @@ class AppAccessibilityService : AccessibilityService() {
     // while the current challenge is active
     private var isChallengeActive = false
 
+    // Lama - Tracks the app that has an active challenge
+    private var pendingChallengePackage: String? = null
+
+    // Lama - Prevents overlapping database checks
+    private var isCheckingPendingChallenge = false
+
+    // Lama - Prevents opening the same challenge repeatedly
+    private var displayedInterventionId: Int? = null
+
+    // Lama - Accesses saved interventions
+    private lateinit var interventionRepository: InterventionRepository
+
     // Lama - Repositories used to connect monitoring with stored app data
     private lateinit var userRepository: UserRepository
     private lateinit var restrictedAppRepository: RestrictedAppRepository
@@ -69,6 +86,24 @@ class AppAccessibilityService : AccessibilityService() {
     private lateinit var startInterventionUseCase: StartInterventionUseCase
 
     private lateinit var checkDailyLimitUseCase: CheckDailyLimitUseCase
+
+    // Lama - Allows reopening the same unfinished challenge
+    private fun onChallengeHidden(interventionId: Int) {
+
+        if (displayedInterventionId != interventionId) {
+            return
+        }
+
+        displayedInterventionId = null
+
+        // Keep the challenge active until it is solved
+        isChallengeActive = true
+
+        Log.d(
+            "MinderChallenge",
+            "Challenge hidden | interventionId=$interventionId"
+        )
+    }
 
     // Lama - Checks the shared restricted-content usage every second
     private val monitoringRunnable = object : Runnable {
@@ -165,7 +200,7 @@ class AppAccessibilityService : AccessibilityService() {
                 database.challengeDao()
             )
 
-        val interventionRepository =
+        interventionRepository =
             InterventionRepositoryImpl(
                 database.interventionDao()
             )
@@ -193,12 +228,6 @@ class AppAccessibilityService : AccessibilityService() {
 
         if (event == null) return
 
-        // Lama - Prevents monitoring from restarting
-        // while the challenge is active
-        if (isChallengeActive) {
-            return
-        }
-
         if (
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
@@ -208,6 +237,20 @@ class AppAccessibilityService : AccessibilityService() {
 
         val packageName =
             event.packageName?.toString() ?: return
+
+
+        // Lama - Checks for an unfinished challenge before monitoring usage
+        if (packageName == "com.zhiliaoapp.musically" ||
+            packageName == "com.instagram.android" ||
+            packageName == "com.google.android.youtube"
+        ) {
+            checkPendingChallenge(packageName)
+        }
+
+        // Lama - Stops monitoring only when a challenge is active
+        if (isChallengeActive) {
+            return
+        }
 
         // Lama - Determines whether the current content
         // contributes to the shared restricted-content timer
@@ -253,6 +296,61 @@ class AppAccessibilityService : AccessibilityService() {
             pauseLimitMonitoring()
         }
     }
+
+    // Lama - Reopens an unfinished challenge for a restricted app
+    private fun checkPendingChallenge(packageName: String) {
+
+        if (isCheckingPendingChallenge) return
+
+        isCheckingPendingChallenge = true
+
+        serviceScope.launch {
+            try {
+                val user = userRepository.getUser()
+                    ?: return@launch
+
+                val restrictedApp =
+                    restrictedAppRepository.getAppByPackageName(
+                        userId = user.userId,
+                        packageName = packageName
+                    ) ?: return@launch
+
+                val pending =
+                    interventionRepository.getPendingInterventionForUser(
+                        user.userId
+                    )
+
+                if (pending != null) {
+
+                    withContext(Dispatchers.Main) {
+
+                        pauseLimitMonitoring()
+
+                        showChallenge(
+                            appId = pending.appId,
+                            interventionId = pending.id,
+                            packageName = packageName
+                        )
+                    }
+                }
+
+            } catch (exception: Exception) {
+
+                Log.e(
+                    "MinderChallenge",
+                    "Failed to check pending intervention",
+                    exception
+                )
+
+            } finally {
+
+                withContext(Dispatchers.Main) {
+                    isCheckingPendingChallenge = false
+                }
+            }
+        }
+    }
+
 
     // Lama - Connects the monitoring layer with the existing
     // user, restricted-app, challenge, and intervention layers
@@ -302,6 +400,27 @@ class AppAccessibilityService : AccessibilityService() {
                     "MinderChallenge",
                     "Restricted app found | appId=${restrictedApp.id} | package=$packageName"
                 )
+
+                val existingIntervention =
+                    interventionRepository.getPendingInterventionForUser(
+                        user.userId
+                    )
+
+                if (existingIntervention != null) {
+
+                    withContext(Dispatchers.Main) {
+
+                        pendingChallengePackage = packageName
+
+                        showChallenge(
+                            appId = existingIntervention.appId,
+                            interventionId = existingIntervention.id,
+                            packageName = packageName
+                        )
+                    }
+
+                    return@launch
+                }
 
                 val calendar = Calendar.getInstance()
 
@@ -424,35 +543,48 @@ class AppAccessibilityService : AccessibilityService() {
         packageName: String
     ) {
 
+        // Lama - Prevents duplicate challenge screens
+        if (displayedInterventionId == interventionId) {
+            Log.d(
+                "MinderChallenge",
+                "Challenge already displayed: $interventionId"
+            )
+            return
+        }
+
+        displayedInterventionId = interventionId
+        pendingChallengePackage = packageName
+        isChallengeActive = true
+
         Log.d(
             "MinderChallenge",
-            "Opening ChallengeActivity | appId=$appId | interventionId=$interventionId | package=$packageName"
+            "Opening ChallengeActivity | interventionId=$interventionId"
         )
 
-        val intent =
-            Intent(
-                this,
-                ChallengeActivity::class.java
-            ).apply {
+        val intent = Intent(
+            this,
+            ChallengeActivity::class.java
+        ).apply {
 
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
-                putExtra(
-                    ChallengeActivity.EXTRA_APP_ID,
-                    appId
-                )
+            putExtra(
+                ChallengeActivity.EXTRA_APP_ID,
+                appId
+            )
 
-                putExtra(
-                    ChallengeActivity.EXTRA_INTERVENTION_ID,
-                    interventionId
-                )
+            putExtra(
+                ChallengeActivity.EXTRA_INTERVENTION_ID,
+                interventionId
+            )
 
-                putExtra(
-                    ChallengeActivity.EXTRA_PACKAGE_NAME,
-                    packageName
-                )
-            }
+            putExtra(
+                ChallengeActivity.EXTRA_PACKAGE_NAME,
+                packageName
+            )
+        }
 
         startActivity(intent)
     }
@@ -482,6 +614,10 @@ class AppAccessibilityService : AccessibilityService() {
 
         // Lama - Allows accessibility events to be processed again
         isChallengeActive = false
+
+        pendingChallengePackage = null
+
+        displayedInterventionId = null
 
         // Lama - Starts the next shared usage interval from zero
         usageLimitMonitor.resetMonitoring()

@@ -157,6 +157,21 @@ class ChallengeActivity : ComponentActivity() {
         }
     }
 
+    // Lama - Detects when the challenge screen is no longer visible
+    override fun onStop() {
+        super.onStop()
+
+        val interventionId =
+            intent.getIntExtra(EXTRA_INTERVENTION_ID, -1)
+
+        if (interventionId != -1 && !isChangingConfigurations) {
+
+            AppAccessibilityService.notifyChallengeHidden(
+                interventionId
+            )
+        }
+    }
+
     companion object {
 
         const val EXTRA_INTERVENTION_ID =

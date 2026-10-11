@@ -10,6 +10,11 @@ interface InterventionRepository {
         interventionId: Int
     ): Intervention?
 
+    // Lama - Gets the pending challenge for a restricted app
+    suspend fun getPendingIntervention(
+        appId: Int
+    ): Intervention?
+
     suspend fun getInterventionsByAppId(
         appId: Int
     ): List<Intervention>
@@ -25,4 +30,8 @@ interface InterventionRepository {
         unlockTime: Long?,
         status: String
     )
+    // Lama - Gets the user's shared pending intervention
+    suspend fun getPendingInterventionForUser(
+        userId: Int
+    ): Intervention?
 }
