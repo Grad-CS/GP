@@ -102,6 +102,8 @@ fun getInstalledSystemApps(context: Context): List<SelectableApp> {
 
 @Composable
 fun AppSelectionScreen(
+    //Ragahd-: Receive previously saved apps when editing the selection
+    initialSelectedApps: List<SelectableApp> = emptyList(),
     onBackClick: () -> Unit = {},
     onDoneClick: (List<SelectableApp>) -> Unit = {}
 ) {
@@ -113,8 +115,27 @@ fun AppSelectionScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        allApps = getInstalledSystemApps(context)
+   // LaunchedEffect(Unit) {
+   //     allApps = getInstalledSystemApps(context)
+    //}
+    //Ragahd-: Load installed apps and restore their saved selection and daily limits
+    LaunchedEffect(initialSelectedApps) {
+        val installedApps = getInstalledSystemApps(context)
+
+        allApps = installedApps.map { installedApp ->
+            val savedApp = initialSelectedApps.firstOrNull {
+                it.packageName == installedApp.packageName
+            }
+
+            if (savedApp != null) {
+                installedApp.copy(
+                    isSelected = true,
+                    dailyLimitMinutes = savedApp.dailyLimitMinutes
+                )
+            } else {
+                installedApp
+            }
+        }
     }
 
     val filteredApps = remember(allApps, searchQuery) {

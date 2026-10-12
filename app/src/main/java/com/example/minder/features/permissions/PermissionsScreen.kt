@@ -29,6 +29,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.minder.services.usage.UsagePermissionManager
+//Ragahd-: Import lifecycle-aware permission refresh support
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+//Ragahd-: Import accessibility service state detection
+import android.content.ComponentName
+import com.example.minder.services.monitoring.AppAccessibilityService
+
 
 private val PrimaryDark = Color(0xFF001B3D)
 private val PrimaryBlue = Color(0xFF2F8FFF)
@@ -38,6 +46,8 @@ private val TextPrimary = Color(0xFFFFFFFF)
 private val TextSecondary = Color(0xFF8A9FB8)
 private val BorderColor = Color(0xFF143866)
 private val ErrorColor = Color(0xFFFF5252)
+
+
 
 data class PermissionItemData(
     val title: String,
@@ -56,6 +66,46 @@ fun PermissionsScreen(
 
     // حالة لإظهار رسالة التنبيه
     var showErrorAlert by remember { mutableStateOf(false) }
+
+    //Ragahd-: Track the current Usage Access permission state
+    var hasUsageAccess by remember {
+        mutableStateOf(usagePermissionManager.hasUsageAccess())
+    }
+
+  //Ragahd-: Track the current Accessibility Service permission state
+    var hasAccessibilityAccess by remember {
+        mutableStateOf(isAccessibilityServiceEnabled(context))
+    }
+
+   //Ragahd-: Track the current overlay permission state
+    var hasOverlayAccess by remember {
+        mutableStateOf(hasOverlayPermission(context))
+    }
+
+
+//Ragahd-: Refresh permission state whenever the app returns to the foreground
+    //Ragahd-: Refresh required permission states when returning to the app
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasUsageAccess = usagePermissionManager.hasUsageAccess()
+                hasAccessibilityAccess = isAccessibilityServiceEnabled(context)
+                hasOverlayAccess = hasOverlayPermission(context)
+
+                if (hasUsageAccess && hasAccessibilityAccess) {
+                    showErrorAlert = false
+                }
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     val permissionsList = remember {
         listOf(
@@ -155,7 +205,17 @@ fun PermissionsScreen(
                     )
                 }
             }
-
+            //Ragahd-: Show the current Usage Access permission status
+            Text(
+                text = if (hasUsageAccess) {
+                    "Usage Access: Granted"
+                } else {
+                    "Usage Access: Not granted"
+                },
+                color = if (hasUsageAccess) Color(0xFF4CAF50) else ErrorColor,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
             // عرض رسالة الخطأ إذا حاول المتابعة بدون منح الصلاحيات الإلزامية
             if (showErrorAlert) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -174,11 +234,13 @@ fun PermissionsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
+                    //Ragahd-: Require Usage Access and Accessibility before continuing
                     onClick = {
-                        // التحقق من الصلاحيات قبل الانتقال (مثال: استخدام Usage Access كصلاحية إلزامية)
-                        val hasAccess = usagePermissionManager.hasUsageAccess()
+                        hasUsageAccess = usagePermissionManager.hasUsageAccess()
+                        hasAccessibilityAccess = isAccessibilityServiceEnabled(context)
+                        hasOverlayAccess = hasOverlayPermission(context)
 
-                        if (hasAccess) {
+                        if (hasUsageAccess && hasAccessibilityAccess) {
                             showErrorAlert = false
                             onNextClick()
                         } else {
@@ -215,6 +277,28 @@ fun PermissionsScreen(
     }
 }
 
+//Ragahd-: Check whether the Minder accessibility service is enabled
+private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+    val enabledServices = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ) ?: return false
+
+    val expectedService = ComponentName(
+        context,
+        AppAccessibilityService::class.java
+    ).flattenToString()
+
+    return enabledServices.split(":").any { service ->
+        service.equals(expectedService, ignoreCase = true)
+    }
+}
+
+//Ragahd-: Check whether overlay permission is granted
+private fun hasOverlayPermission(context: Context): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            Settings.canDrawOverlays(context)
+}
 @Composable
 private fun PermissionCard(
     title: String,
