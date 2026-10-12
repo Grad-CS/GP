@@ -18,6 +18,8 @@ import com.example.minder.ui.theme.MinderTheme
 
 class ChallengeActivity : ComponentActivity() {
 
+    private var challengeFinished = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -30,6 +32,12 @@ class ChallengeActivity : ComponentActivity() {
 
         val packageName =
             intent.getStringExtra(EXTRA_PACKAGE_NAME)
+
+        // Lama - Identifies challenges started from the daily blocking screen
+        val fromDailyBlock = intent.getBooleanExtra(
+            EXTRA_FROM_DAILY_BLOCK,
+            false
+        )
 
         Log.d(
             "MinderChallenge",
@@ -115,19 +123,16 @@ class ChallengeActivity : ComponentActivity() {
                         handleChallengeResultUseCase,
 
                     onSuccess = {
+                        challengeFinished = true
 
                         Log.d(
                             "MinderChallenge",
                             "Challenge completed successfully"
                         )
 
-                        // Notify monitoring that the challenge has finished
                         AppAccessibilityService.notifyChallengeCompleted()
 
-                        // Move Minder task to the background
-                        // so the previously used restricted app becomes visible again
                         moveTaskToBack(true)
-
                         finish()
                     },
                     // Lama - Closes the challenge after maximum attempts
@@ -164,8 +169,11 @@ class ChallengeActivity : ComponentActivity() {
         val interventionId =
             intent.getIntExtra(EXTRA_INTERVENTION_ID, -1)
 
-        if (interventionId != -1 && !isChangingConfigurations) {
-
+        if (
+            interventionId != -1 &&
+            !isChangingConfigurations &&
+            !challengeFinished
+        ) {
             AppAccessibilityService.notifyChallengeHidden(
                 interventionId
             )
@@ -182,5 +190,7 @@ class ChallengeActivity : ComponentActivity() {
 
         const val EXTRA_PACKAGE_NAME =
             "extra_package_name"
+
+        const val EXTRA_FROM_DAILY_BLOCK = "extra_from_daily_block"
     }
 }

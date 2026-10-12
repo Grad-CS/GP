@@ -27,6 +27,17 @@ class UsageStatsService(
     private val usageStatsManager =
         context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
+
+    // Lama - Returns today's Android usage time for one application
+    fun getTodayUsageSeconds(packageName: String): Long {
+
+        val appUsage = getTodayUsage().find {
+            it.packageName == packageName
+        }
+
+        return (appUsage?.usageTimeMillis ?: 0L) / 1000L
+    }
+
     // Lama - Returns the total usage time for applications used today
     fun getTodayUsage(): List<AppUsageInfo> {
 

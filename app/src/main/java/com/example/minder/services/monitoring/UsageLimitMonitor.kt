@@ -2,6 +2,8 @@ package com.example.minder.services.monitoring
 
 class UsageLimitMonitor {
 
+    private var challengeIntervalSeconds: Long = 15L * 60L
+
     // Lama - Stores when the current restricted-app usage period started
     private var activeStartTime: Long? = null
 
@@ -10,6 +12,14 @@ class UsageLimitMonitor {
 
     // Lama - Stores the currently active restricted application
     private var currentPackageName: String? = null
+
+    fun setChallengeInterval(minutes: Int) {
+        require(minutes > 0) {
+            "Challenge interval must be greater than zero"
+        }
+
+        challengeIntervalSeconds = minutes.toLong() * 60L
+    }
 
     // Lama - Starts or continues the shared timer for restricted applications
     fun startMonitoring(packageName: String) {
@@ -56,9 +66,7 @@ class UsageLimitMonitor {
 
     // Lama - Checks whether the shared temporary usage limit has been reached
     fun hasReachedLimit(): Boolean {
-
-        return getElapsedSeconds() >=
-                TEST_LIMIT_SECONDS
+        return getElapsedSeconds() >= challengeIntervalSeconds
     }
 
     // Lama - Returns the restricted application currently being used
@@ -75,9 +83,4 @@ class UsageLimitMonitor {
         currentPackageName = null
     }
 
-    companion object {
-
-        // Lama - Temporary shared 30-second limit used for testing
-        private const val TEST_LIMIT_SECONDS = 30L
-    }
 }

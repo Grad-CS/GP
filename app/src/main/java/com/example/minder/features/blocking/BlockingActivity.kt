@@ -17,8 +17,11 @@ import com.example.minder.domain.usecase.usage.CheckDailyLimitUseCase
 import com.example.minder.features.challenge.ChallengeActivity
 import com.example.minder.ui.theme.MinderTheme
 import kotlinx.coroutines.launch
+import com.example.minder.services.monitoring.AppAccessibilityService
+
 
 class BlockingActivity : ComponentActivity() {
+
 
     companion object {
         const val EXTRA_APP_ID = "app_id"
@@ -154,6 +157,11 @@ class BlockingActivity : ComponentActivity() {
                                         ChallengeActivity.EXTRA_PACKAGE_NAME,
                                         packageName
                                     )
+
+                                    putExtra(
+                                        ChallengeActivity.EXTRA_FROM_DAILY_BLOCK,
+                                        true
+                                    )
                                 }
 
                             startActivity(challengeIntent)
@@ -164,5 +172,9 @@ class BlockingActivity : ComponentActivity() {
                 )
             }
         }
+    }
+    override fun onDestroy() {
+        AppAccessibilityService.notifyBlockingClosed()
+        super.onDestroy()
     }
 }
