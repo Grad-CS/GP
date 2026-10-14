@@ -38,16 +38,23 @@
 
         </activity>
 
-        <!-- Blocking screen -->
+        <!-- Daily limit blocking screen -->
         <activity
             android:name=".features.blocking.BlockingActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:taskAffinity="com.example.minder.blocking"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask" />
 
         <!-- Challenge screen -->
         <activity
             android:name=".features.challenge.ChallengeActivity"
             android:exported="false"
-            android:excludeFromRecents="true" />
+            android:taskAffinity="com.example.minder.challenge"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask" />
+
+
 
         <!-- Accessibility service used to monitor foreground target applications -->
         <service

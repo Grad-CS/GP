@@ -71,11 +71,15 @@ class InterventionRepositoryImpl(
         unlockTime: Long?,
         status: String
     ) {
-        interventionDao.completeIntervention(
-            interventionId,
-            unlockTime,
-            status
+        val updatedRows = interventionDao.completeIntervention(
+            interventionId = interventionId,
+            unlockTime = unlockTime,
+            status = status
         )
+
+        check(updatedRows == 1) {
+            "Intervention update failed | interventionId=$interventionId | status=$status | updatedRows=$updatedRows"
+        }
     }
 }
 

@@ -30,6 +30,7 @@ import java.util.Calendar
 import com.example.minder.domain.repository.InterventionRepository
 import com.example.minder.data.repository.UserSettingsRepositoryImpl
 import com.example.minder.services.usage.UsageStatsService
+import android.view.accessibility.AccessibilityWindowInfo
 
 
 class AppAccessibilityService : AccessibilityService() {
@@ -123,11 +124,161 @@ class AppAccessibilityService : AccessibilityService() {
     // Lama - Tracks the latest foreground application
     private var foregroundPackageName: String? = null
 
+    // Lama - Tracks foreground app changes to identify outdated checks
+    private var foregroundChangeVersion = 0
+
+    // Lama - Stores enabled apps selected by the user
+    private var selectedPackages: Set<String> = emptySet()
+
+    // Lama - Indicates that the current app passed the pending challenge check
+    private var monitoringApprovedPackage: String? = null
+
+    // Lama - Indicates whether the latest selected-app list has finished loading
+    private var areSelectedAppsLoaded = false
+
+    // Lama - Tracks the latest selected-app loading request
+    private var selectedAppsLoadVersion = 0
+
     // Lama - Tracks the last daily limit check
     private var lastDailyLimitCheckTime = 0L
 
     // Lama - Checks the daily limit every 5 seconds
     private val dailyLimitCheckIntervalMillis = 5000L
+
+
+    private fun logSystemUiWindow(event: AccessibilityEvent) {
+        if (
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.packageName?.toString() != "com.android.systemui"
+        ) return
+
+        val matchingWindow = windows.firstOrNull {
+            it.id == event.windowId
+        }
+
+        Log.d(
+            "MinderSystemUI",
+            "SystemUI window | " +
+                    "class=${event.className} | " +
+                    "type=${matchingWindow?.type} | " +
+                    "title=${matchingWindow?.title} | " +
+                    "rootClass=${matchingWindow?.root?.className} | " +
+                    "focused=${matchingWindow?.isFocused} | " +
+                    "active=${matchingWindow?.isActive}"
+        )
+    }
+
+    // Lama - Starts monitoring only after all checks are completed
+    private fun resumeApprovedMonitoring(packageName: String) {
+
+        if (
+            foregroundPackageName != packageName ||
+            !areSelectedAppsLoaded ||
+            packageName !in selectedPackages ||
+            monitoringApprovedPackage != packageName ||
+            dailyLimitCheckedPackage != packageName ||
+            isCheckingDailyLimit ||
+            isCheckingPendingChallenge ||
+            isBlockingActive ||
+            isChallengeActive
+        ) {
+            return
+        }
+
+        val shouldCountUsage =
+            if (packageName == "com.google.android.youtube") {
+                isYouTubeShorts()
+            } else {
+                true
+            }
+
+        if (shouldCountUsage) {
+
+            // Lama - Avoids restarting monitoring for the same active app
+            if (
+                !isMonitoring ||
+                usageLimitMonitor.getCurrentPackage() != packageName
+            ) {
+                usageLimitMonitor.startMonitoring(packageName)
+                startLimitMonitoring()
+            }
+
+        } else {
+            pauseLimitMonitoring()
+        }
+    }
+
+    // Lama - Loads the user's selected and enabled apps from Room
+    // Lama - Loads enabled apps selected by the user from Room
+    private fun loadSelectedApps() {
+
+        selectedAppsLoadVersion++
+        val requestVersion = selectedAppsLoadVersion
+
+        // Lama - Prevents monitoring while selected apps are being refreshed
+        areSelectedAppsLoaded = false
+        pauseLimitMonitoring()
+
+        serviceScope.launch {
+            try {
+                val user = userRepository.getUser() ?: return@launch
+
+                val apps = restrictedAppRepository.getAppsByUserId(
+                    userId = user.userId
+                )
+
+                val enabledPackages = apps
+                    .filter { it.isEnabled }
+                    .map { it.packageName }
+                    .toSet()
+
+                withContext(Dispatchers.Main) {
+
+                    // Lama - Ignores results from an older loading request
+                    if (requestVersion != selectedAppsLoadVersion) {
+                        return@withContext
+                    }
+
+                    selectedPackages = enabledPackages
+
+                    // Lama - The latest selected-app list is ready
+                    areSelectedAppsLoaded = true
+
+                    // Lama - Stops monitoring if the current app is no longer selected
+                    if (foregroundPackageName !in selectedPackages) {
+                        monitoringApprovedPackage = null
+                        pauseLimitMonitoring()
+                    }
+
+                    Log.d(
+                        "MinderMonitoring",
+                        "Selected apps loaded: $selectedPackages"
+                    )
+
+                    // Lama - Checks the current selected app after its list finishes loading
+                    val currentPackage = foregroundPackageName
+
+                    if (currentPackage != null) {
+                        if (
+                            currentPackage in selectedPackages &&
+                            dailyLimitCheckedPackage != currentPackage
+                        ) {
+                            checkDailyLimitOnOpen(currentPackage)
+                        } else {
+                            resumeApprovedMonitoring(currentPackage)
+                        }
+                    }
+                }
+
+            } catch (exception: Exception) {
+                Log.e(
+                    "MinderMonitoring",
+                    "Failed to load selected apps",
+                    exception
+                )
+            }
+        }
+    }
 
     // Lama - Allows reopening the same unfinished challenge
     private fun onChallengeHidden(interventionId: Int) {
@@ -279,6 +430,7 @@ class AppAccessibilityService : AccessibilityService() {
                 database.restrictedAppDao()
             )
 
+
         val dailyUsageRepository =
             DailyUsageRepositoryImpl(
                 database.dailyUsageDao()
@@ -307,6 +459,7 @@ class AppAccessibilityService : AccessibilityService() {
                 challengeRepository = challengeRepository
             )
 
+
         // Lama - Uses the existing intervention creation logic
         startInterventionUseCase =
             StartInterventionUseCase(
@@ -314,15 +467,83 @@ class AppAccessibilityService : AccessibilityService() {
                 interventionRepository = interventionRepository
             )
 
+        // Lama - Starts loading selected apps after all monitoring dependencies are ready
+        loadSelectedApps()
+
         Log.d(
             "MinderAccessibility",
             "Accessibility service connected"
         )
     }
 
+    // Checks whether the event belongs to an input-method window,
+    // such as a keyboard displayed over another application.
+    private fun isInputMethodWindow(event: AccessibilityEvent): Boolean {
+        val eventWindowId = event.windowId
+
+        return windows.any { window ->
+            window.id == eventWindowId &&
+                    window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD
+        }
+    }
+
+    private fun handleForegroundPackage(packageName: String) {
+
+        if (foregroundPackageName != packageName) {
+
+            Log.d(
+                "MinderForeground",
+                "Foreground changed | from=$foregroundPackageName | to=$packageName"
+            )
+
+            foregroundPackageName = packageName
+            foregroundChangeVersion++
+
+            dailyLimitCheckedPackage = null
+            monitoringApprovedPackage = null
+
+            pauseLimitMonitoring()
+            loadSelectedApps()
+        }
+
+        checkDailyLimitOnOpen(packageName)
+
+        if (
+            isChallengeActive ||
+            isBlockingActive ||
+            isCheckingDailyLimit ||
+            isCheckingPendingChallenge ||
+            monitoringApprovedPackage != packageName
+        ) {
+            return
+        }
+
+        resumeApprovedMonitoring(packageName)
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
 
         if (event == null) return
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+
+            val activePackage =
+                rootInActiveWindow?.packageName?.toString()
+
+            if (
+                activePackage != null &&
+                activePackage in selectedPackages
+            ) {
+                Log.d(
+                    "MinderForeground",
+                    "Restoring monitoring from windows | active=$activePackage"
+                )
+
+                handleForegroundPackage(activePackage)
+            }
+
+            return
+        }
 
         if (
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
@@ -334,83 +555,78 @@ class AppAccessibilityService : AccessibilityService() {
         val packageName =
             event.packageName?.toString() ?: return
 
-        // Lama - Detects when the foreground application changes
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        logSystemUiWindow(event)
 
-            if (foregroundPackageName != packageName) {
-
-                foregroundPackageName = packageName
-
-                // Check the daily limit again when the user returns to an app
-                dailyLimitCheckedPackage = null
-            }
-        }
-
-
-        // Lama - Checks for an unfinished challenge before monitoring usage
-        if (packageName == "com.zhiliaoapp.musically" ||
-            packageName == "com.instagram.android" ||
-            packageName == "com.google.android.youtube"
-        ) {
-            // Lama - Checks the daily usage limit first
-            checkDailyLimitOnOpen(packageName)
-
-            // Lama - Checks for an unfinished challenge
-            checkPendingChallenge(packageName)
-        }
-
-        // Lama - Waits for the daily limit check before monitoring
+        // A keyboard window does not mean the user left the restricted app.
         if (
-            isChallengeActive ||
-            isBlockingActive ||
-            isCheckingDailyLimit
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            isInputMethodWindow(event)
+        ) {
+            Log.d(
+                "MinderForeground",
+                "Input method window ignored | foreground=$foregroundPackageName"
+            )
+            return
+        }
+
+        // Ignore the temporary Samsung volume panel.
+        // It does not mean the user left the restricted app.
+        if (
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            packageName == "com.android.systemui" &&
+            event.className?.toString() ==
+            "com.android.systemui.volume.view.standard.VolumePanelWindow"
+        ) {
+            Log.d(
+                "MinderSystemUI",
+                "Volume panel ignored | foreground=$foregroundPackageName"
+            )
+            return
+        }
+
+
+        // Lama - Ignores content changes from apps outside the foreground
+        if (
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            packageName != foregroundPackageName
         ) {
             return
         }
 
-        // Lama - Determines whether the current content
-        // contributes to the shared restricted-content timer
-        val shouldCountUsage = when (packageName) {
-
-            "com.zhiliaoapp.musically" -> true
-
-            "com.instagram.android" -> true
-
-            // Lama - Only YouTube Shorts contributes to the timer
-            "com.google.android.youtube" -> {
-
-                val isShorts =
-                    isYouTubeShorts()
-
-                Log.d(
-                    "MinderYouTube",
-                    "Package: $packageName | Shorts: $isShorts"
-                )
-
-                isShorts
-            }
-
-            else -> false
-        }
-
-        Log.d(
-            "MinderAccessibility",
-            "Foreground app: $packageName | Count usage: $shouldCountUsage"
-        )
-
-        if (shouldCountUsage) {
-
-            // Lama - Continues the same shared interval even
-            // when the user switches between restricted apps
-            usageLimitMonitor.startMonitoring(packageName)
-
-            startLimitMonitoring()
-
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            handleForegroundPackage(packageName)
         } else {
+            checkDailyLimitOnOpen(packageName)
 
-            // Lama - Pauses the shared interval without resetting it
-            pauseLimitMonitoring()
+            if (
+                !isChallengeActive &&
+                !isBlockingActive &&
+                !isCheckingDailyLimit &&
+                !isCheckingPendingChallenge &&
+                monitoringApprovedPackage == packageName
+            ) {
+                resumeApprovedMonitoring(packageName)
+            }
         }
+
+        // Lama - Checks the daily limit for the detected app.
+        // The function verifies that the app is selected and enabled in Room.
+        checkDailyLimitOnOpen(packageName)
+
+        // Lama - Waits for the daily limit check before monitoring
+        // Lama - Waits until daily limit and pending challenge checks finish
+        if (
+            isChallengeActive ||
+            isBlockingActive ||
+            isCheckingDailyLimit ||
+            isCheckingPendingChallenge ||
+            monitoringApprovedPackage != packageName
+        ) {
+            return
+        }
+
+        // Lama - Monitors only approved selected apps
+        resumeApprovedMonitoring(packageName)
     }
 
     // Lama - Checks whether today's Android usage has reached the app's daily limit
@@ -489,7 +705,21 @@ class AppAccessibilityService : AccessibilityService() {
             } finally {
 
                 withContext(Dispatchers.Main) {
+
                     isCheckingDailyLimit = false
+
+                    // Lama - Checks the new foreground app after the periodic check
+                    val currentPackage = foregroundPackageName
+
+                    // Lama - Rechecks the current app if its daily limit check is still pending
+                    if (
+                        currentPackage != null &&
+                        dailyLimitCheckedPackage != currentPackage &&
+                        !isBlockingActive &&
+                        !isChallengeActive
+                    ) {
+                        checkDailyLimitOnOpen(currentPackage)
+                    }
                 }
             }
         }
@@ -498,13 +728,26 @@ class AppAccessibilityService : AccessibilityService() {
     private fun checkDailyLimitOnOpen(packageName: String) {
 
         if (
+            !areSelectedAppsLoaded ||
+            packageName !in selectedPackages ||
             isCheckingDailyLimit ||
-            isBlockingActive ||
-            isChallengeActive ||
-            dailyLimitCheckedPackage == packageName
+            isBlockingActive
         ) return
 
+        // Recheck an unfinished challenge when entering a restricted app.
+        if (isChallengeActive) {
+            if (displayedInterventionId == null && !isCheckingPendingChallenge) {
+                checkPendingChallenge(packageName)
+            }
+            return
+        }
+
+        if (dailyLimitCheckedPackage == packageName) return
+
         isCheckingDailyLimit = true
+
+        // Lama - Saves the foreground version when this daily check starts
+        val checkVersion = foregroundChangeVersion
 
         pauseLimitMonitoring()
 
@@ -526,8 +769,11 @@ class AppAccessibilityService : AccessibilityService() {
 
                 withContext(Dispatchers.Main) {
 
-                    // Ignore the result if the user switched apps
-                    if (foregroundPackageName != packageName) {
+                    // Lama - Ignores outdated checks even if the user returns to the same app
+                    if (
+                        foregroundPackageName != packageName ||
+                        checkVersion != foregroundChangeVersion
+                    ) {
                         return@withContext
                     }
 
@@ -570,9 +816,31 @@ class AppAccessibilityService : AccessibilityService() {
                 )
 
             } finally {
-
                 withContext(Dispatchers.Main) {
+
                     isCheckingDailyLimit = false
+
+                    // Lama - Checks the new foreground app if the user switched apps
+                    val currentPackage = foregroundPackageName
+
+                    if (
+                        currentPackage != null &&
+                        (
+                                currentPackage != packageName ||
+                                        checkVersion != foregroundChangeVersion
+                                ) &&
+                        !isBlockingActive &&
+                        !isChallengeActive
+                    ) {
+                        // Lama - Rechecks the current app after an outdated daily check
+                        checkDailyLimitOnOpen(currentPackage)
+                    } else if (
+                        !isCheckingPendingChallenge &&
+                        monitoringApprovedPackage == packageName
+                    ) {
+                        // Lama - Resumes monitoring after both checks are completed
+                        resumeApprovedMonitoring(packageName)
+                    }
                 }
             }
         }
@@ -583,6 +851,9 @@ class AppAccessibilityService : AccessibilityService() {
         if (isCheckingPendingChallenge || isBlockingActive) return
 
         isCheckingPendingChallenge = true
+
+        // Lama - Saves the foreground version when the pending challenge check starts
+        val checkVersion = foregroundChangeVersion
 
         serviceScope.launch {
             try {
@@ -604,8 +875,10 @@ class AppAccessibilityService : AccessibilityService() {
 
                 withContext(Dispatchers.Main) {
 
-                    // Lama - Ignores results from an app no longer in foreground
-                    if (foregroundPackageName != packageName ||
+                    // Lama - Ignores pending challenge results from an older app session
+                    if (
+                        foregroundPackageName != packageName ||
+                        checkVersion != foregroundChangeVersion ||
                         isBlockingActive
                     ) {
                         return@withContext
@@ -624,13 +897,12 @@ class AppAccessibilityService : AccessibilityService() {
 
                     } else if (!isChallengeActive) {
 
-                        // Lama - Resumes the shared challenge timer
-                        usageLimitMonitor.startMonitoring(packageName)
-                        startLimitMonitoring()
+                        // Lama - Approves monitoring after confirming no pending challenge
+                        monitoringApprovedPackage = packageName
 
                         Log.d(
-                            "MinderLimit",
-                            "Monitoring resumed | package=$packageName"
+                            "MinderChallenge",
+                            "Monitoring approved | package=$packageName"
                         )
                     }
                 }
@@ -643,10 +915,36 @@ class AppAccessibilityService : AccessibilityService() {
                     exception
                 )
 
-            } finally {
-
+            }finally {
                 withContext(Dispatchers.Main) {
+
                     isCheckingPendingChallenge = false
+
+                    val currentPackage = foregroundPackageName
+
+                    if (
+                        currentPackage != null &&
+                        (
+                                currentPackage != packageName ||
+                                        checkVersion != foregroundChangeVersion
+                                ) &&
+                        !isCheckingDailyLimit &&
+                        !isBlockingActive &&
+                        !isChallengeActive
+                    ) {
+                        // Lama - Restarts the correct check after an outdated pending challenge check
+                        if (dailyLimitCheckedPackage == currentPackage) {
+                            checkPendingChallenge(currentPackage)
+                        } else {
+                            checkDailyLimitOnOpen(currentPackage)
+                        }
+                    } else if (
+                        !isCheckingDailyLimit &&
+                        monitoringApprovedPackage == packageName
+                    ) {
+                        // Lama - Resumes monitoring after all checks finish
+                        resumeApprovedMonitoring(packageName)
+                    }
                 }
             }
         }
@@ -941,24 +1239,24 @@ class AppAccessibilityService : AccessibilityService() {
         )
     }
 
-    // Lama - Pauses monitoring without deleting accumulated usage
+    // Lama - Pauses monitoring and preserves accumulated usage
     private fun pauseLimitMonitoring() {
 
-        if (!isMonitoring) {
-            return
+        if (isMonitoring) {
+
+            Log.d(
+                "MinderLimit",
+                "Periodic monitoring PAUSED at ${usageLimitMonitor.getElapsedSeconds()} sec"
+            )
+
+            isMonitoring = false
+
+            monitoringHandler.removeCallbacks(
+                monitoringRunnable
+            )
         }
 
-        Log.d(
-            "MinderLimit",
-            "Periodic monitoring PAUSED at ${usageLimitMonitor.getElapsedSeconds()} sec"
-        )
-
-        isMonitoring = false
-
-        monitoringHandler.removeCallbacks(
-            monitoringRunnable
-        )
-
+        // Lama - Always pauses the shared usage timer
         usageLimitMonitor.pauseMonitoring()
     }
 
@@ -1023,11 +1321,12 @@ class AppAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
 
+        // Lama - Stops monitoring and preserves accumulated usage before service shutdown
+        pauseLimitMonitoring()
+
         monitoringHandler.removeCallbacks(
             monitoringRunnable
         )
-
-        isMonitoring = false
 
         // Lama - Removes the stored service instance
         instance = null

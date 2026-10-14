@@ -41,16 +41,17 @@ interface InterventionDao {
     ): List<InterventionEntity>
 
     @Query("""
-        UPDATE intervention
-        SET unlockTime = :unlockTime,
-            status = :status
-        WHERE interventionId = :interventionId
+    UPDATE intervention
+    SET unlockTime = :unlockTime,
+        status = :status
+    WHERE interventionId = :interventionId
+      AND status = 'PENDING'
     """)
     suspend fun completeIntervention(
         interventionId: Int,
         unlockTime: Long?,
         status: String
-    )
+    ): Int
 
 
     // Lama - Returns the latest pending challenge for a restricted app

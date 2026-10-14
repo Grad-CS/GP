@@ -164,6 +164,8 @@ class BlockingActivity : ComponentActivity() {
                                     )
                                 }
 
+                            challengeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
                             startActivity(challengeIntent)
 
                             finish()

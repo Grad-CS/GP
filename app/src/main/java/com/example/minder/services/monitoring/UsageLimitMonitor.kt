@@ -34,13 +34,15 @@ class UsageLimitMonitor {
         }
     }
 
-    // Lama - Pauses the shared timer when the user leaves restricted applications
+    // Lama - Pauses the shared timer while preserving accumulated usage
     fun pauseMonitoring() {
 
-        val startTime = activeStartTime ?: return
+        val startTime = activeStartTime
 
-        accumulatedUsageMillis +=
-            System.currentTimeMillis() - startTime
+        if (startTime != null) {
+            accumulatedUsageMillis +=
+                System.currentTimeMillis() - startTime
+        }
 
         activeStartTime = null
         currentPackageName = null

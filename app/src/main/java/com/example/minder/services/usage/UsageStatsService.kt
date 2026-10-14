@@ -28,14 +28,53 @@ class UsageStatsService(
         context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
 
-    // Lama - Returns today's Android usage time for one application
+    // Lama - Calculates today's usage from foreground and background events
     fun getTodayUsageSeconds(packageName: String): Long {
 
-        val appUsage = getTodayUsage().find {
-            it.packageName == packageName
+        val calendar = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
 
-        return (appUsage?.usageTimeMillis ?: 0L) / 1000L
+        val startTime = calendar.timeInMillis
+        val endTime = System.currentTimeMillis()
+
+        val usageEvents = usageStatsManager.queryEvents(startTime, endTime)
+        val event = UsageEvents.Event()
+
+        var sessionStart: Long? = null
+        var totalUsageMillis = 0L
+
+        while (usageEvents.hasNextEvent()) {
+            usageEvents.getNextEvent(event)
+
+            if (event.packageName != packageName) continue
+
+            when (event.eventType) {
+
+                UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    sessionStart = event.timeStamp
+                }
+
+                UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    val start = sessionStart
+
+                    if (start != null) {
+                        totalUsageMillis += event.timeStamp - start
+                        sessionStart = null
+                    }
+                }
+            }
+        }
+
+        // Lama - Includes the current session if the app is still open
+        if (sessionStart != null) {
+            totalUsageMillis += endTime - sessionStart
+        }
+
+        return totalUsageMillis / 1000L
     }
 
     // Lama - Returns the total usage time for applications used today
