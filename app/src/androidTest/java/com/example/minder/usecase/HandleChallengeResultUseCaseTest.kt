@@ -210,7 +210,15 @@ class HandleChallengeResultUseCaseTest {
         override suspend fun getInterventionById(
             interventionId: Int
         ): Intervention? {
-            return null
+            return Intervention(
+                id = interventionId,
+                appId = 1,
+                challengeId = 1,
+                triggerTime = System.currentTimeMillis(),
+                unlockTime = null,
+                status = "PENDING",
+                savedTime = 0
+            )
         }
 
         override suspend fun getInterventionsByAppId(
@@ -218,6 +226,18 @@ class HandleChallengeResultUseCaseTest {
         ): List<Intervention> {
             return emptyList()
         }
+
+
+        //Ragahd-: Returns no pending intervention in this test fake.
+        override suspend fun getPendingIntervention(appId: Int): Intervention? {
+            return null
+        }
+
+        //Ragahd-: Implements the pending intervention lookup for a user.
+        override suspend fun getPendingInterventionForUser(userId: Int): Intervention? {
+            return null
+        }
+
 
         override suspend fun getInterventionsForPeriod(
             appId: Int,

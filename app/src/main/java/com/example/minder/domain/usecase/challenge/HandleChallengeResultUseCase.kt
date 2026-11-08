@@ -25,6 +25,20 @@ class HandleChallengeResultUseCase(
         userAnswer: String
     ): ChallengeResult {
 
+        //Ragahd-: Checks that the intervention exists and is still active.
+        val intervention =
+            interventionRepository.getInterventionById(interventionId)
+                ?: return ChallengeResult.Locked
+
+        //Ragahd-: Prevents submitting attempts for completed interventions.
+        if (intervention.status != "PENDING") {
+            return if (intervention.status == "UNLOCKED") {
+                ChallengeResult.Correct
+            } else {
+                ChallengeResult.Locked
+            }
+        }
+
         val isCorrect = submitChallengeUseCase(
             challenge = challenge,
             interventionId = interventionId,

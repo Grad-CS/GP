@@ -1,9 +1,12 @@
+
 package com.example.minder.features.challenge
 
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import com.example.minder.data.local.database.MinderDatabase
 import com.example.minder.data.repository.ChallengeAttemptRepositoryImpl
 import com.example.minder.data.repository.ChallengeRepositoryImpl
@@ -33,7 +36,7 @@ class ChallengeActivity : ComponentActivity() {
         val packageName =
             intent.getStringExtra(EXTRA_PACKAGE_NAME)
 
-        // Lama - Identifies challenges started from the daily blocking screen
+        //Lama - Identifies challenges started from the daily blocking screen.
         val fromDailyBlock = intent.getBooleanExtra(
             EXTRA_FROM_DAILY_BLOCK,
             false
@@ -110,48 +113,71 @@ class ChallengeActivity : ComponentActivity() {
                 interventionRepository = interventionRepository
             )
 
+        //Ragahd-: Creates the ViewModel with the existing use cases.
+        val challengeViewModel = ViewModelProvider(
+            this,
+            object : ViewModelProvider.Factory {
+                override fun <T : ViewModel> create(
+                    modelClass: Class<T>
+                ): T {
+                    if (modelClass.isAssignableFrom(ChallengeViewModel::class.java)) {
+                        @Suppress("UNCHECKED_CAST")
+                        return ChallengeViewModel(
+                            interventionId = interventionId,
+                            getInterventionChallengeUseCase = getInterventionChallengeUseCase,
+                            handleChallengeResultUseCase = handleChallengeResultUseCase
+                        ) as T
+                    }
+                    throw IllegalArgumentException("Unknown ViewModel class")
+                }
+            }
+        )[ChallengeViewModel::class.java]
+
         setContent {
-
             MinderTheme {
-
+                //Ragahd-: Passes the ViewModel to the updated challenge screen.
                 ChallengeScreen(
                     appId = appId,
                     interventionId = interventionId,
-                    getInterventionChallengeUseCase =
-                        getInterventionChallengeUseCase,
-                    handleChallengeResultUseCase =
-                        handleChallengeResultUseCase,
+                    viewModel = challengeViewModel,
+
 
                     onSuccess = {
+                        //Ragahd-: Marks the challenge as finished.
                         challengeFinished = true
 
                         Log.d(
                             "MinderChallenge",
-                            "Challenge completed successfully"
+                            "Challenge completed successfully | fromDailyBlock=$fromDailyBlock"
                         )
 
-                        AppAccessibilityService.notifyChallengeCompleted()
+                        //Ragahd-: Notifies monitoring about the challenge source.
+                        AppAccessibilityService.notifyChallengeCompleted(fromDailyBlock)
 
-                        moveTaskToBack(true)
+                        //Ragahd-: Moves the task to the background only for periodic challenges.
+                        if (!fromDailyBlock) {
+                            moveTaskToBack(true)
+                        }
+
                         finish()
                     },
-                    // Lama - Closes the challenge after maximum attempts
+
+
                     onLocked = {
+                        //Ragahd-: Marks the locked challenge as finished.
+                        challengeFinished = true
 
                         Log.d(
                             "MinderChallenge",
                             "Challenge locked after maximum attempts"
                         )
 
-                        // Ragahd - Notifies monitoring that the locked challenge has ended
-                        AppAccessibilityService.notifyChallengeCompleted()
-
+                        //Ragahd-: Preserves the source of the completed challenge.
+                        AppAccessibilityService.notifyChallengeCompleted(fromDailyBlock)
                         finish()
                     },
 
-                    // Lama - Prevents bypassing an active challenge
                     onClose = {
-
                         Log.d(
                             "MinderChallenge",
                             "Close blocked while challenge is active"
@@ -162,7 +188,7 @@ class ChallengeActivity : ComponentActivity() {
         }
     }
 
-    // Lama - Detects when the challenge screen is no longer visible
+    //Lama - Detects when an unfinished challenge becomes hidden.
     override fun onStop() {
         super.onStop()
 
@@ -191,6 +217,8 @@ class ChallengeActivity : ComponentActivity() {
         const val EXTRA_PACKAGE_NAME =
             "extra_package_name"
 
-        const val EXTRA_FROM_DAILY_BLOCK = "extra_from_daily_block"
+        //Ragahd-: Identifies challenges launched from the daily blocking screen.
+        const val EXTRA_FROM_DAILY_BLOCK =
+            "extra_from_daily_block"
     }
 }

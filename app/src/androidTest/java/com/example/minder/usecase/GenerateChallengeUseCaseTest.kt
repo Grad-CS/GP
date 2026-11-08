@@ -1,10 +1,13 @@
+
 package com.example.minder.domain.usecase.challenge
 
 import com.example.minder.domain.model.Challenge
+import com.example.minder.domain.model.ChallengeType
+import com.example.minder.domain.model.GeneratedChallenge
 import com.example.minder.domain.repository.ChallengeRepository
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -13,30 +16,6 @@ class GenerateChallengeUseCaseTest {
 
     private lateinit var useCase: GenerateChallengeUseCase
     private lateinit var repository: FakeChallengeRepository
-
-    private val easyMathChallenge = Challenge(
-        id = 1,
-        question = "What is 5 + 3?",
-        correctAnswer = "8",
-        difficulty = "EASY",
-        type = "MATH"
-    )
-
-    private val easyLogicChallenge = Challenge(
-        id = 2,
-        question = "Which number comes next: 2, 4, 6, ?",
-        correctAnswer = "8",
-        difficulty = "EASY",
-        type = "LOGIC"
-    )
-
-    private val hardMathChallenge = Challenge(
-        id = 3,
-        question = "What is 15 × 8?",
-        correctAnswer = "120",
-        difficulty = "HARD",
-        type = "MATH"
-    )
 
     @Before
     fun setup() {
@@ -48,114 +27,110 @@ class GenerateChallengeUseCaseTest {
     }
 
     @Test
-    fun returnsChallengeForRequestedDifficulty() = runTest {
-        repository.challengesByDifficulty = listOf(
-            easyMathChallenge,
-            easyLogicChallenge
-        )
-
+    fun generatesAndSavesMathChallenge() = runTest {
         val result = useCase(
+            type = ChallengeType.MATH,
             difficulty = "EASY"
         )
 
         assertNotNull(result)
-        assertTrue(result!!.difficulty.equals("EASY", ignoreCase = true))
+        assertEquals(1, result.id)
+        assertEquals("MATH", result.type)
+        assertEquals("EASY", result.difficulty)
+
+        assertNotNull(repository.savedChallenge)
+        assertEquals(
+            ChallengeType.MATH,
+            repository.savedChallenge?.challengeType
+        )
     }
 
     @Test
-    fun returnsNullWhenNoChallengesMatchDifficulty() = runTest {
-        repository.challengesByDifficulty = emptyList()
-
+    fun generatesLogicChallenge() = runTest {
         val result = useCase(
+            type = ChallengeType.LOGIC,
             difficulty = "EASY"
         )
 
-        assertNull(result)
+        assertEquals("LOGIC", result.type)
+        assertEquals("EASY", result.difficulty)
+        assertEquals(
+            ChallengeType.LOGIC,
+            repository.savedChallenge?.challengeType
+        )
     }
 
     @Test
-    fun returnsChallengeMatchingDifficultyAndType() = runTest {
-        repository.challengesByType = listOf(
-            easyMathChallenge,
-            hardMathChallenge
-        )
-
+    fun generatesPuzzleChallenge() = runTest {
         val result = useCase(
+            type = ChallengeType.PUZZLE,
             difficulty = "EASY",
-            type = "MATH"
+            puzzleGame = "ODD_SHAPE"
         )
 
-        assertNotNull(result)
-        assertTrue(result!!.difficulty.equals("EASY", ignoreCase = true))
-        assertTrue(result.type == "MATH")
+        assertEquals("PUZZLE", result.type)
+        assertEquals("EASY", result.difficulty)
+        assertEquals(
+            ChallengeType.PUZZLE,
+            repository.savedChallenge?.challengeType
+        )
     }
 
     @Test
-    fun ignoresChallengesWithWrongDifficultyWhenTypeIsProvided() = runTest {
-        repository.challengesByType = listOf(
-            hardMathChallenge
-        )
-
+    fun passesRequestedDifficultyToGenerator() = runTest {
         val result = useCase(
-            difficulty = "EASY",
-            type = "MATH"
+            type = ChallengeType.MATH,
+            difficulty = "HARD"
         )
 
-        assertNull(result)
+        assertEquals("HARD", result.difficulty)
+        assertEquals("HARD", repository.savedChallenge?.difficulty)
     }
 
     @Test
-    fun handlesDifficultyCaseInsensitivelyWhenTypeIsProvided() = runTest {
-        repository.challengesByType = listOf(
-            easyMathChallenge
-        )
+    fun savesGeneratedChallengeAndUsesReturnedId() = runTest {
+        repository.nextChallengeId = 42
 
         val result = useCase(
-            difficulty = "easy",
-            type = "MATH"
+            type = ChallengeType.MATH,
+            difficulty = "MEDIUM"
         )
 
-        assertNotNull(result)
-        assertTrue(result!!.difficulty.equals("EASY", ignoreCase = true))
-    }
-
-    @Test
-    fun returnsNullWhenTypeHasNoChallenges() = runTest {
-        repository.challengesByType = emptyList()
-
-        val result = useCase(
-            difficulty = "EASY",
-            type = "MATH"
-        )
-
-        assertNull(result)
+        assertEquals(42, result.id)
+        assertTrue(repository.savedChallenge != null)
     }
 
     private class FakeChallengeRepository : ChallengeRepository {
 
-        var challengesByDifficulty = emptyList<Challenge>()
-        var challengesByType = emptyList<Challenge>()
+        var savedChallenge: GeneratedChallenge? = null
+        var nextChallengeId = 1
 
-        override suspend fun getChallengeById(
-            id: Int
-        ): Challenge? {
+        override suspend fun getChallengeById(id: Int): Challenge? {
             return null
         }
 
         override suspend fun getChallengesByDifficulty(
             difficulty: String
         ): List<Challenge> {
-            return challengesByDifficulty
+            return emptyList()
         }
 
         override suspend fun getChallengesByType(
             type: String
         ): List<Challenge> {
-            return challengesByType
+            return emptyList()
         }
 
         override suspend fun getAllChallenges(): List<Challenge> {
-            return challengesByDifficulty
+            return emptyList()
+        }
+
+        //Ragahd-: Captures the generated challenge and returns a test database ID.
+        override suspend fun saveGeneratedChallenge(
+            challenge: GeneratedChallenge
+        ): Int {
+            savedChallenge = challenge
+            return nextChallengeId
         }
     }
 }

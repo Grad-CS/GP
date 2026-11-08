@@ -31,6 +31,9 @@ import com.example.minder.domain.repository.InterventionRepository
 import com.example.minder.data.repository.UserSettingsRepositoryImpl
 import com.example.minder.services.usage.UsageStatsService
 import android.view.accessibility.AccessibilityWindowInfo
+//Ragahd-: Imports the challenge types used when creating an intervention.
+import com.example.minder.domain.model.ChallengeType
+import com.example.minder.domain.repository.UserSettingsRepository
 
 
 class AppAccessibilityService : AccessibilityService() {
@@ -41,9 +44,12 @@ class AppAccessibilityService : AccessibilityService() {
         private var instance: AppAccessibilityService? = null
 
         // Lama - Notifies the service that the current challenge has ended
-        fun notifyChallengeCompleted() {
-            instance?.onChallengeCompleted()
+
+        //Ragahd-: Passes the challenge source to the monitoring service.
+        fun notifyChallengeCompleted(fromDailyBlock: Boolean = false) {
+            instance?.onChallengeCompleted(fromDailyBlock)
         }
+
         // Lama - Notifies monitoring when the challenge screen is no longer visible
         fun notifyChallengeHidden(interventionId: Int) {
             instance?.onChallengeHidden(interventionId)
@@ -102,6 +108,8 @@ class AppAccessibilityService : AccessibilityService() {
     // Lama - Repositories used to connect monitoring with stored app data
     private lateinit var userRepository: UserRepository
     private lateinit var restrictedAppRepository: RestrictedAppRepository
+    //Ragahd-: Provides access to the user's saved challenge settings.
+    private lateinit var userSettingsRepository: UserSettingsRepository
 
     // Lama - Creates the challenge and intervention when the limit is reached
     private lateinit var startInterventionUseCase: StartInterventionUseCase
@@ -391,38 +399,12 @@ class AppAccessibilityService : AccessibilityService() {
 
         usageStatsService = UsageStatsService(applicationContext)
 
-        val userSettingsRepository =
+        //Ragahd-: Initializes the repository used to read saved user settings.
+        userSettingsRepository =
             UserSettingsRepositoryImpl(database.userSettingsDao())
 
-        serviceScope.launch {
-            try {
-                val user = userRepository.getUser()
 
-                if (user != null) {
-                    val settings =
-                        userSettingsRepository.getSettingsByUserId(user.userId)
 
-                    if (settings != null) {
-                        withContext(Dispatchers.Main) {
-                            usageLimitMonitor.setChallengeInterval(
-                                settings.challengeInterval
-                            )
-
-                            Log.d(
-                                "MinderLimit",
-                                "Challenge interval loaded: ${settings.challengeInterval} minutes"
-                            )
-                        }
-                    }
-                }
-            } catch (exception: Exception) {
-                Log.e(
-                    "MinderLimit",
-                    "Failed to load challenge interval",
-                    exception
-                )
-            }
-        }
 
         // Lama - Resolves package names to restricted applications
         restrictedAppRepository =
@@ -467,8 +449,45 @@ class AppAccessibilityService : AccessibilityService() {
                 interventionRepository = interventionRepository
             )
 
+        //Ragahd-: Load the saved challenge interval before starting app monitoring.
+        serviceScope.launch {
+            try {
+                val user = userRepository.getUser()
+
+                if (user == null) {
+                    Log.w("MinderLimit", "No local user found; using default challenge interval")
+                } else {
+                    val settings =
+                        userSettingsRepository.getSettingsByUserId(user.userId)
+
+                    if (settings == null) {
+                        Log.w("MinderLimit", "No saved settings found; using default challenge interval")
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            usageLimitMonitor.setChallengeInterval(settings.challengeInterval)
+
+                            Log.d(
+                                "MinderLimit",
+                                "Challenge interval loaded: ${settings.challengeInterval} minutes"
+                            )
+                        }
+                    }
+                }
+            } catch (exception: Exception) {
+                Log.e(
+                    "MinderLimit",
+                    "Failed to load challenge interval; using default interval",
+                    exception
+                )
+            } finally {
+                withContext(Dispatchers.Main) {
+                    loadSelectedApps()
+                }
+            }
+        }
+
         // Lama - Starts loading selected apps after all monitoring dependencies are ready
-        loadSelectedApps()
+
 
         Log.d(
             "MinderAccessibility",
@@ -1053,10 +1072,24 @@ class AppAccessibilityService : AccessibilityService() {
 
                 // Lama - Creates a real challenge and intervention
                 // using the existing challenge engine
+                //Ragahd-: Selects a challenge type for the generated intervention.
+                val challengeType = ChallengeType.values().random()
+
+               //Ragahd-: Reads the user's saved challenge difficulty from Room.
+                val settings = userSettingsRepository.getSettingsByUserId(user.userId)
+
+               //Ragahd-: Uses the saved difficulty and falls back to EASY if settings are unavailable.
+                val difficulty = settings?.challengeDifficulty
+                    ?.uppercase()
+                    ?.takeIf { it in setOf("EASY", "MEDIUM", "HARD") }
+                    ?: "EASY"
+
+                //Ragahd-: Generates and saves the challenge using the selected difficulty.
                 val result =
                     startInterventionUseCase(
                         appId = restrictedApp.id,
-                        difficulty = "EASY"
+                        difficulty = difficulty,
+                        type = challengeType
                     )
 
                 if (result == null) {
@@ -1197,28 +1230,43 @@ class AppAccessibilityService : AccessibilityService() {
 
     // Lama - Unlocks monitoring after the user successfully
 // completes the current challenge
-    private fun onChallengeCompleted() {
 
+
+    // Lama - Unlocks monitoring after the user successfully
+    // completes the current challenge
+
+    //Ragahd-: Keeps the daily block active after its challenge is completed.
+    private fun onChallengeCompleted(fromDailyBlock: Boolean) {
         Log.d(
             "MinderChallenge",
-            "Challenge completed - monitoring unlocked"
+            "Challenge completed | fromDailyBlock=$fromDailyBlock"
         )
 
-        // Lama - Allows accessibility events to be processed again
         isChallengeActive = false
-
         pendingChallengePackage = null
-
         displayedInterventionId = null
 
-        // Lama - Starts the next shared usage interval from zero
-        usageLimitMonitor.resetMonitoring()
+        if (!fromDailyBlock) {
+            //Ragahd-: Resets the timer only for periodic challenges.
+            usageLimitMonitor.resetMonitoring()
 
-        Log.d(
-            "MinderLimit",
-            "New challenge monitoring cycle is ready"
-        )
+            Log.d(
+                "MinderLimit",
+                "New periodic challenge interval is ready"
+            )
+        } else {
+            //Ragahd-: Keeps the blocking state active after a daily-limit challenge.
+            isBlockingActive = true
+            pauseLimitMonitoring()
+
+            Log.d(
+                "MinderBlocking",
+                "Daily block remains active after challenge completion"
+            )
+        }
     }
+
+
 
     // Lama - Starts periodic usage-limit checking
     private fun startLimitMonitoring() {

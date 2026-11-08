@@ -1,3 +1,4 @@
+
 package com.example.minder.domain.model
 
 data class Challenge(
@@ -5,5 +6,7 @@ data class Challenge(
     val question: String,
     val correctAnswer: String,
     val difficulty: String,
-    val type: String
+    val type: String,
+    //Ragahd-: Preserves game-specific JSON data when loading a challenge.
+    val gameData: String = "{}"
 )

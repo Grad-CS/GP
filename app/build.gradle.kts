@@ -19,7 +19,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-
+    //Ragahd-: Makes exported Room schemas available to instrumentation tests.
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -36,6 +37,11 @@ android {
     buildFeatures {
         compose = true
     }
+
+}
+//Ragahd-: Exports Room schemas for migration verification.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 dependencies {
     implementation(libs.androidx.core.ktx)
@@ -60,4 +66,9 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    //Ragahd-: Enables Android instrumented tests for Room database migrations.
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.androidx.sqlite.framework)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+
 }
