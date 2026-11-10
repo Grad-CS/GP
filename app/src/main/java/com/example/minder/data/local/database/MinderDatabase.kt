@@ -17,6 +17,8 @@ import com.example.minder.data.local.dao.RestrictedAppDao
 import com.example.minder.data.local.dao.UsageSessionDao
 import com.example.minder.data.local.dao.UserDao
 import com.example.minder.data.local.dao.UserSettingsDao
+//Ragahd-: Imports the new baseline DAO.
+import com.example.minder.data.local.dao.UsageBaselineDao
 import com.example.minder.data.local.entities.ChallengeAttemptEntity
 import com.example.minder.data.local.entities.ChallengeEntity
 import com.example.minder.data.local.entities.DailyUsageEntity
@@ -26,6 +28,8 @@ import com.example.minder.data.local.entities.RestrictedAppEntity
 import com.example.minder.data.local.entities.UsageSessionEntity
 import com.example.minder.data.local.entities.UserEntity
 import com.example.minder.data.local.entities.UserSettingsEntity
+//Ragahd-: Imports the new baseline entity.
+import com.example.minder.data.local.entities.UsageBaselineEntity
 
 @Database(
     entities = [
@@ -37,9 +41,11 @@ import com.example.minder.data.local.entities.UserSettingsEntity
         InterventionEntity::class,
         ChallengeAttemptEntity::class,
         ExtensionRequestEntity::class,
-        DailyUsageEntity::class
+        DailyUsageEntity::class,
+        //Ragahd-: Registers the historical usage baseline table.
+        UsageBaselineEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class MinderDatabase : RoomDatabase() {
@@ -54,6 +60,9 @@ abstract class MinderDatabase : RoomDatabase() {
     abstract fun extensionRequestDao(): ExtensionRequestDao
     abstract fun dailyUsageDao(): DailyUsageDao
 
+    //Ragahd-: Exposes the baseline DAO to the database.
+    abstract fun usageBaselineDao(): UsageBaselineDao
+
     companion object {
 
         //Ragahd-: Adds the game data column while preserving existing challenge records.
@@ -62,6 +71,36 @@ abstract class MinderDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
                     "ALTER TABLE challenge ADD COLUMN gameData TEXT NOT NULL DEFAULT '{}'"
+                )
+            }
+        }
+
+        //Ragahd-: Creates the historical usage baseline table.
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS usage_baseline (
+                        baselineId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        appId INTEGER NOT NULL,
+                        dayOfWeek INTEGER NOT NULL,
+                        averageUsageSeconds INTEGER NOT NULL,
+                        sampleCount INTEGER NOT NULL,
+                        periodStart INTEGER NOT NULL,
+                        periodEnd INTEGER NOT NULL,
+                        capturedAt INTEGER NOT NULL,
+                        FOREIGN KEY(appId) REFERENCES restricted_app(appId)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_usage_baseline_appId ON usage_baseline(appId)"
+                )
+
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_usage_baseline_appId_dayOfWeek ON usage_baseline(appId, dayOfWeek)"
                 )
             }
         }
@@ -78,8 +117,8 @@ abstract class MinderDatabase : RoomDatabase() {
                     MinderDatabase::class.java,
                     "minder_database"
                 )
-                    //Ragahd-: Applies the migration when upgrading the existing database.
-                    .addMigrations(MIGRATION_1_2)
+                    //Ragahd-: Applies all registered database migrations.
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
 
                 INSTANCE = instance

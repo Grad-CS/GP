@@ -4,6 +4,9 @@ import com.example.minder.data.local.dao.ChallengeAttemptDao
 import com.example.minder.data.local.entities.ChallengeAttemptEntity
 import com.example.minder.domain.model.ChallengeAttempt
 import com.example.minder.domain.repository.ChallengeAttemptRepository
+import com.example.minder.domain.model.ChallengeAttemptWithType
+import com.example.minder.domain.model.ChallengeType
+import com.example.minder.data.local.models.ChallengeAttemptWithTypeEntity
 
 class ChallengeAttemptRepositoryImpl(
     private val challengeAttemptDao: ChallengeAttemptDao
@@ -46,6 +49,28 @@ class ChallengeAttemptRepositoryImpl(
     ): Int {
         return challengeAttemptDao.getAttemptCount(interventionId)
     }
+
+    //Ragahd-: Retrieves attempts with challenge types for a user's enabled apps.
+    override suspend fun getAttemptsWithTypeForPeriod(
+        userId: Int,
+        startTime: Long,
+        endTime: Long
+    ): List<ChallengeAttemptWithType> {
+        return challengeAttemptDao
+            .getAttemptsWithTypeForPeriod(userId, startTime, endTime)
+            .map { it.toDomainWithType() }
+    }
+}
+
+//Ragahd-: Converts the database projection into a domain model.
+private fun ChallengeAttemptWithTypeEntity.toDomainWithType(): ChallengeAttemptWithType {
+    return ChallengeAttemptWithType(
+        interventionId = interventionId,
+        challengeId = challengeId,
+        isCorrect = isCorrect,
+        attemptTime = attemptTime,
+        challengeType = ChallengeType.valueOf(challengeType)
+    )
 }
 
 private fun ChallengeAttemptEntity.toDomain(): ChallengeAttempt {
