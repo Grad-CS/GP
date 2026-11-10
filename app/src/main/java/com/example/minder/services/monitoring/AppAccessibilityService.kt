@@ -53,6 +53,19 @@ class AppAccessibilityService : AccessibilityService() {
         fun notifyBlockingClosed() {
             instance?.onBlockingClosed()
         }
+
+        fun notifyChallengeIntervalChanged(minutes: Int) {
+            instance?.updateChallengeInterval(minutes)
+        }
+    }
+
+    private fun updateChallengeInterval(minutes: Int) {
+        usageLimitMonitor.setChallengeInterval(minutes)
+
+        Log.d(
+            "MinderLimit",
+            "Challenge interval updated: $minutes minutes"
+        )
     }
 
     // Lama - Clears the blocking screen state

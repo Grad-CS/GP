@@ -53,6 +53,8 @@ import android.widget.Toast
 //Ragahd-: Import LaunchedEffect to restore saved apps when Home opens
 import androidx.compose.runtime.LaunchedEffect
 
+import com.example.minder.services.monitoring.AppAccessibilityService
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var usagePermissionManager: UsagePermissionManager
@@ -343,6 +345,16 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             )
                                         }
+                                        // Lama - Update the active monitoring service
+                                        // after saving the user's selected challenge interval.
+                                        AppAccessibilityService.notifyChallengeIntervalChanged(
+                                            intervalMinutes
+                                        )
+
+                                        Log.d(
+                                            "MinderLimit",
+                                            "Saved challenge interval: $intervalMinutes minutes"
+                                        )
 
                                         if (!allAppsValid) {
                                             Toast.makeText(
