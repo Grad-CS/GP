@@ -1,7 +1,9 @@
+
 package com.example.minder.domain.usecase.challenge
 
 import com.example.minder.domain.model.Challenge
 import com.example.minder.domain.repository.InterventionRepository
+import java.util.Calendar
 
 sealed class ChallengeResult {
     data object Correct : ChallengeResult()
@@ -25,6 +27,22 @@ class HandleChallengeResultUseCase(
         userAnswer: String
     ): ChallengeResult {
 
+        // Lama - Retrieve the current intervention.
+        val intervention =
+            interventionRepository.getInterventionById(interventionId)
+                ?: error("Intervention not found: $interventionId")
+
+        // Lama - Prevent attempts on finished interventions.
+        when (intervention.status) {
+            "LOCKED" -> return ChallengeResult.Locked
+            "UNLOCKED" -> return ChallengeResult.Correct
+            "PENDING" -> Unit
+            else -> error(
+                "Unexpected intervention status: ${intervention.status}"
+            )
+        }
+
+        // Lama - Validate and save the user's answer.
         val isCorrect = submitChallengeUseCase(
             challenge = challenge,
             interventionId = interventionId,
@@ -41,22 +59,31 @@ class HandleChallengeResultUseCase(
             return ChallengeResult.Correct
         }
 
+        // Lama - Count incorrect attempts.
         val attemptCount = getAttemptCountUseCase(
             interventionId = interventionId
         )
 
-        return if (attemptCount >= MAX_ATTEMPTS) {
+        if (attemptCount >= MAX_ATTEMPTS) {
+
+            // Lama - Lock restricted apps until next local midnight.
+            val lockExpiresAt = Calendar.getInstance().apply {
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
 
             interventionRepository.completeIntervention(
                 interventionId = interventionId,
-                unlockTime = null,
+                unlockTime = lockExpiresAt,
                 status = "LOCKED"
             )
 
-            ChallengeResult.Locked
-
-        } else {
-            ChallengeResult.Retry
+            return ChallengeResult.Locked
         }
+
+        return ChallengeResult.Retry
     }
 }

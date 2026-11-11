@@ -1,12 +1,15 @@
+
 package com.example.minder.domain.usecase.intervention
 
-import com.example.minder.domain.model.Challenge
+import com.example.minder.domain.model.ChallengeType
+import com.example.minder.domain.model.GeneratedChallenge
 import com.example.minder.domain.model.Intervention
 import com.example.minder.domain.repository.ChallengeRepository
 import com.example.minder.domain.repository.InterventionRepository
 import com.example.minder.domain.usecase.challenge.GenerateChallengeUseCase
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -17,14 +20,6 @@ class StartInterventionUseCaseTest {
     private lateinit var useCase: StartInterventionUseCase
     private lateinit var challengeRepository: FakeChallengeRepository
     private lateinit var interventionRepository: FakeInterventionRepository
-
-    private val challenge = Challenge(
-        id = 1,
-        question = "What is 5 + 3?",
-        correctAnswer = "8",
-        difficulty = "EASY",
-        type = "MATH"
-    )
 
     @Before
     fun setup() {
@@ -42,84 +37,75 @@ class StartInterventionUseCaseTest {
     }
 
     @Test
-    fun returnsNullWhenNoChallengeIsAvailable() = runTest {
-
-        challengeRepository.challengesByDifficulty = emptyList()
-
+    fun createsInterventionWithGeneratedChallenge() = runTest {
         val result = useCase(
             appId = 10,
-            difficulty = "EASY"
-        )
-
-        assertNull(result)
-        assertNull(interventionRepository.savedIntervention)
-    }
-
-    @Test
-    fun createsInterventionWithCorrectData() = runTest {
-
-        challengeRepository.challengesByDifficulty = listOf(challenge)
-
-        useCase(
-            appId = 10,
-            difficulty = "EASY"
+            difficulty = "EASY",
+            type = ChallengeType.MATH
         )
 
         val intervention = interventionRepository.savedIntervention
 
-        assertTrue(intervention != null)
+        assertNotNull(intervention)
         assertEquals(10, intervention!!.appId)
-        assertEquals(challenge.id, intervention.challengeId)
+        assertEquals(result.challenge.id, intervention.challengeId)
         assertEquals("PENDING", intervention.status)
-        assertEquals(null, intervention.unlockTime)
+        assertNull(intervention.unlockTime)
         assertEquals(0, intervention.savedTime)
+
+        assertEquals(1, result.challenge.id)
+        assertEquals("MATH", result.challenge.type)
+        assertEquals("EASY", result.challenge.difficulty)
+        assertNotNull(challengeRepository.savedChallenge)
     }
 
     @Test
     fun returnsChallengeAndInterventionId() = runTest {
-
-        challengeRepository.challengesByDifficulty = listOf(challenge)
         interventionRepository.nextId = 25L
+        challengeRepository.nextChallengeId = 7
 
         val result = useCase(
             appId = 10,
-            difficulty = "EASY"
+            difficulty = "HARD",
+            type = ChallengeType.MATH
         )
 
-        assertTrue(result != null)
-        assertEquals(challenge, result!!.challenge)
+        assertEquals(7, result.challenge.id)
+        assertEquals("MATH", result.challenge.type)
+        assertEquals("HARD", result.challenge.difficulty)
         assertEquals(25, result.interventionId)
+
+        assertEquals(7, interventionRepository.savedIntervention?.challengeId)
     }
 
     private class FakeChallengeRepository : ChallengeRepository {
 
-        var challengesByDifficulty = emptyList<Challenge>()
+        var savedChallenge: GeneratedChallenge? = null
+        var nextChallengeId = 1
 
-        override suspend fun getChallengeById(
-            id: Int
-        ): Challenge? {
-            return null
-        }
+        override suspend fun getChallengeById(id: Int) = null
 
         override suspend fun getChallengesByDifficulty(
             difficulty: String
-        ): List<Challenge> {
-            return challengesByDifficulty
-        }
+        ) = emptyList<com.example.minder.domain.model.Challenge>()
 
         override suspend fun getChallengesByType(
             type: String
-        ): List<Challenge> {
-            return emptyList()
-        }
+        ) = emptyList<com.example.minder.domain.model.Challenge>()
 
-        override suspend fun getAllChallenges(): List<Challenge> {
-            return challengesByDifficulty
+        override suspend fun getAllChallenges() =
+            emptyList<com.example.minder.domain.model.Challenge>()
+
+        //Ragahd-: Stores the generated challenge and returns its test database ID.
+        override suspend fun saveGeneratedChallenge(
+            challenge: GeneratedChallenge
+        ): Int {
+            savedChallenge = challenge
+            return nextChallengeId
         }
     }
 
-    private class FakeInterventionRepository :
-        InterventionRepository {
+    private class FakeInterventionRepository : InterventionRepository {
 
         var savedIntervention: Intervention? = null
         var nextId = 1L
@@ -133,23 +119,23 @@ class StartInterventionUseCaseTest {
 
         override suspend fun getInterventionById(
             interventionId: Int
-        ): Intervention? {
-            return null
-        }
+        ): Intervention? = null
 
         override suspend fun getInterventionsByAppId(
             appId: Int
-        ): List<Intervention> {
-            return emptyList()
-        }
+        ): List<Intervention> = emptyList()
+
+        //Ragahd-: Returns no pending intervention in this test fake.
+        override suspend fun getPendingIntervention(appId: Int): Intervention? = null
+
+        //Ragahd-: Implements the pending intervention lookup for a user.
+        override suspend fun getPendingInterventionForUser(userId: Int): Intervention? = null
 
         override suspend fun getInterventionsForPeriod(
             appId: Int,
             startTime: Long,
             endTime: Long
-        ): List<Intervention> {
-            return emptyList()
-        }
+        ): List<Intervention> = emptyList()
 
         override suspend fun completeIntervention(
             interventionId: Int,

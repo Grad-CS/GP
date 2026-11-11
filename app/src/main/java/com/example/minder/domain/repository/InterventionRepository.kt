@@ -1,3 +1,4 @@
+
 package com.example.minder.domain.repository
 
 import com.example.minder.domain.model.Intervention
@@ -10,7 +11,6 @@ interface InterventionRepository {
         interventionId: Int
     ): Intervention?
 
-    // Lama - Gets the pending challenge for a restricted app
     suspend fun getPendingIntervention(
         appId: Int
     ): Intervention?
@@ -30,8 +30,20 @@ interface InterventionRepository {
         unlockTime: Long?,
         status: String
     )
-    // Lama - Gets the user's shared pending intervention
+
+    // Lama - Retrieve a shared pending challenge.
     suspend fun getPendingInterventionForUser(
+        userId: Int
+    ): Intervention?
+
+    // Lama - Retrieve a lock that has not expired.
+    suspend fun getActiveLockForUser(
+        userId: Int,
+        currentTimeMillis: Long
+    ): Intervention?
+
+    // Lama - Retrieve the latest lock record.
+    suspend fun getLatestLockForUser(
         userId: Int
     ): Intervention?
 }

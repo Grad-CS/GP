@@ -18,10 +18,18 @@ import com.example.minder.features.challenge.ChallengeActivity
 import com.example.minder.ui.theme.MinderTheme
 import kotlinx.coroutines.launch
 import com.example.minder.services.monitoring.AppAccessibilityService
+//Ragahd-: Imports the challenge types used for intervention creation.
+import com.example.minder.domain.model.ChallengeType
+//Ragahd-: Provides access to the current user.
+import com.example.minder.data.repository.UserRepositoryImpl
+//Ragahd-: Provides access to the user's saved settings.
+import com.example.minder.data.repository.UserSettingsRepositoryImpl
 
 
 class BlockingActivity : ComponentActivity() {
 
+    //Ragahd-: Prevents duplicate challenge creation from repeated taps.
+    private var isStartingChallenge = false
 
     companion object {
         const val EXTRA_APP_ID = "app_id"
@@ -50,6 +58,13 @@ class BlockingActivity : ComponentActivity() {
 
         val database =
             MinderDatabase.getDatabase(applicationContext)
+
+//Ragahd-: Initializes repositories for retrieving the current user and saved settings.
+        val userRepository = UserRepositoryImpl(database.userDao())
+
+//Ragahd-: Initializes the repository that stores user preferences.
+        val userSettingsRepository =
+            UserSettingsRepositoryImpl(database.userSettingsDao())
 
         val restrictedAppRepository =
             RestrictedAppRepositoryImpl(
@@ -107,70 +122,75 @@ class BlockingActivity : ComponentActivity() {
                         // Nothing yet
                     },
 
+
                     onTakeChallenge = { selectedAppId, _ ->
+                        if (!isStartingChallenge) {
+                            isStartingChallenge = true
 
-                        Log.d(
-                            "MinderBlocking",
-                            "Take the Challenge clicked | appId=$selectedAppId"
-                        )
+                            lifecycleScope.launch {
+                                try {
+                                    //Ragahd-: Selects a challenge type for the new intervention.
+                                    val challengeType = ChallengeType.values().random()
 
-                        lifecycleScope.launch {
+                                    //Ragahd-: Retrieves the current user from the database.
+                                    val currentUser = userRepository.getUser()
 
-                            val result =
-                                startInterventionUseCase(
-                                    appId = selectedAppId,
-                                    difficulty = "EASY"
-                                )
+                                    //Ragahd-: Retrieves the current user's saved settings.
+                                    val settings = currentUser?.let { user ->
+                                        userSettingsRepository.getSettingsByUserId(user.userId)
+                                    }
 
-                            if (result == null) {
+                                    //Ragahd-: Uses the saved difficulty or EASY when settings are unavailable or invalid.
+                                    val difficulty = settings?.challengeDifficulty
+                                        ?.uppercase()
+                                        ?.takeIf { it in setOf("EASY", "MEDIUM", "HARD") }
+                                        ?: "EASY"
 
-                                Log.e(
-                                    "MinderBlocking",
-                                    "Failed to create intervention"
-                                )
-
-                                return@launch
-                            }
-
-                            Log.d(
-                                "MinderBlocking",
-                                "Intervention created | interventionId=${result.interventionId}"
-                            )
-
-                            val challengeIntent =
-                                Intent(
-                                    this@BlockingActivity,
-                                    ChallengeActivity::class.java
-                                ).apply {
-
-                                    putExtra(
-                                        ChallengeActivity.EXTRA_APP_ID,
-                                        selectedAppId
+                                   //Ragahd-: Creates the intervention using the saved difficulty.
+                                    val result = startInterventionUseCase(
+                                        appId = selectedAppId,
+                                        difficulty = difficulty,
+                                        type = challengeType
                                     )
 
-                                    putExtra(
-                                        ChallengeActivity.EXTRA_INTERVENTION_ID,
-                                        result.interventionId
+                                    //Ragahd-: Logs the intervention and linked challenge IDs.
+                                    Log.d(
+                                        "MinderBlocking",
+                                        "Intervention created | interventionId=${result.interventionId} | " +
+                                                "challengeId=${result.challenge.id} | type=$challengeType"
                                     )
 
-                                    putExtra(
-                                        ChallengeActivity.EXTRA_PACKAGE_NAME,
-                                        packageName
-                                    )
+                                    //Ragahd-: Opens the challenge without finishing the blocking screen.
+                                    val challengeIntent = Intent(
+                                        this@BlockingActivity,
+                                        ChallengeActivity::class.java
+                                    ).apply {
+                                        putExtra(ChallengeActivity.EXTRA_APP_ID, selectedAppId)
+                                        putExtra(
+                                            ChallengeActivity.EXTRA_INTERVENTION_ID,
+                                            result.interventionId
+                                        )
+                                        putExtra(ChallengeActivity.EXTRA_PACKAGE_NAME, packageName)
+                                        putExtra(ChallengeActivity.EXTRA_FROM_DAILY_BLOCK, true)
+                                    }
 
-                                    putExtra(
-                                        ChallengeActivity.EXTRA_FROM_DAILY_BLOCK,
-                                        true
+                                    challengeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    startActivity(challengeIntent)
+
+                                    //Ragahd-: Keeps BlockingActivity underneath the challenge.
+                                } catch (exception: Exception) {
+                                    //Ragahd-: Allows another attempt if challenge creation fails.
+                                    isStartingChallenge = false
+                                    Log.e(
+                                        "MinderBlocking",
+                                        "Failed to create daily-block challenge",
+                                        exception
                                     )
                                 }
-
-                            challengeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-                            startActivity(challengeIntent)
-
-                            finish()
+                            }
                         }
                     }
+
                 )
             }
         }

@@ -31,6 +31,10 @@ import com.example.minder.domain.repository.InterventionRepository
 import com.example.minder.data.repository.UserSettingsRepositoryImpl
 import com.example.minder.services.usage.UsageStatsService
 import android.view.accessibility.AccessibilityWindowInfo
+//Ragahd-: Imports the challenge types used when creating an intervention.
+import com.example.minder.domain.model.ChallengeType
+import com.example.minder.domain.repository.UserSettingsRepository
+import com.example.minder.features.blocking.ChallengeLockedActivity
 
 
 class AppAccessibilityService : AccessibilityService() {
@@ -40,10 +44,23 @@ class AppAccessibilityService : AccessibilityService() {
         // Lama - Holds the currently running accessibility service instance
         private var instance: AppAccessibilityService? = null
 
+        // Lama - Navigate to Home from a blocking screen.
+        fun requestExitToHome() {
+            instance?.performGlobalAction(GLOBAL_ACTION_HOME)
+        }
+
         // Lama - Notifies the service that the current challenge has ended
+
         fun notifyChallengeCompleted() {
             instance?.onChallengeCompleted()
         }
+
+        // Lama - Notify the service when 3 attempts fail.
+        fun notifyChallengeLocked(interventionId: Int) {
+            instance?.onChallengeLocked(interventionId)
+        }
+
+
         // Lama - Notifies monitoring when the challenge screen is no longer visible
         fun notifyChallengeHidden(interventionId: Int) {
             instance?.onChallengeHidden(interventionId)
@@ -54,18 +71,60 @@ class AppAccessibilityService : AccessibilityService() {
             instance?.onBlockingClosed()
         }
 
+        // Lama - Updates the running monitor when the user changes the interval.
         fun notifyChallengeIntervalChanged(minutes: Int) {
             instance?.updateChallengeInterval(minutes)
         }
+
+        // Lama - Notify the service when the lock screen closes.
+        fun notifyChallengeLockScreenClosed() {
+            instance?.isLockScreenVisible = false
+        }
     }
 
-    private fun updateChallengeInterval(minutes: Int) {
-        usageLimitMonitor.setChallengeInterval(minutes)
 
-        Log.d(
-            "MinderLimit",
-            "Challenge interval updated: $minutes minutes"
-        )
+    /// Lama - Show the lock screen only once.
+    private fun showChallengeLocked() {
+        pauseLimitMonitoring()
+
+        isChallengeLocked = true
+        isChallengeActive = true
+        monitoringApprovedPackage = null
+        displayedInterventionId = null
+
+        if (isLockScreenVisible) return
+
+        isLockScreenVisible = true
+
+        val intent = Intent(
+            this,
+            ChallengeLockedActivity::class.java
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+
+        try {
+            startActivity(intent)
+        } catch (exception: Exception) {
+            isLockScreenVisible = false
+            Log.e(
+                "MinderChallenge",
+                "Failed to open challenge lock screen",
+                exception
+            )
+        }
+    }
+
+
+    // Lama - Applies a newly selected challenge interval without resetting usage.
+    private fun updateChallengeInterval(minutes: Int) {
+        if (minutes <= 0) {
+            Log.w("MinderLimit", "Ignored invalid challenge interval: $minutes")
+            return
+        }
+        usageLimitMonitor.setChallengeInterval(minutes)
+        Log.d("MinderLimit", "Challenge interval updated: $minutes minutes")
     }
 
     // Lama - Clears the blocking screen state
@@ -100,6 +159,12 @@ class AppAccessibilityService : AccessibilityService() {
     // while the current challenge is active
     private var isChallengeActive = false
 
+    // Lama - Tracks the challenge lock separately from active challenges.
+    private var isChallengeLocked = false
+
+    // Lama - Prevent duplicate lock screens.
+    private var isLockScreenVisible = false
+
     // Lama - Tracks the app that has an active challenge
     private var pendingChallengePackage: String? = null
 
@@ -115,6 +180,8 @@ class AppAccessibilityService : AccessibilityService() {
     // Lama - Repositories used to connect monitoring with stored app data
     private lateinit var userRepository: UserRepository
     private lateinit var restrictedAppRepository: RestrictedAppRepository
+    //Ragahd-: Provides access to the user's saved challenge settings.
+    private lateinit var userSettingsRepository: UserSettingsRepository
 
     // Lama - Creates the challenge and intervention when the limit is reached
     private lateinit var startInterventionUseCase: StartInterventionUseCase
@@ -404,38 +471,12 @@ class AppAccessibilityService : AccessibilityService() {
 
         usageStatsService = UsageStatsService(applicationContext)
 
-        val userSettingsRepository =
+        //Ragahd-: Initializes the repository used to read saved user settings.
+        userSettingsRepository =
             UserSettingsRepositoryImpl(database.userSettingsDao())
 
-        serviceScope.launch {
-            try {
-                val user = userRepository.getUser()
 
-                if (user != null) {
-                    val settings =
-                        userSettingsRepository.getSettingsByUserId(user.userId)
 
-                    if (settings != null) {
-                        withContext(Dispatchers.Main) {
-                            usageLimitMonitor.setChallengeInterval(
-                                settings.challengeInterval
-                            )
-
-                            Log.d(
-                                "MinderLimit",
-                                "Challenge interval loaded: ${settings.challengeInterval} minutes"
-                            )
-                        }
-                    }
-                }
-            } catch (exception: Exception) {
-                Log.e(
-                    "MinderLimit",
-                    "Failed to load challenge interval",
-                    exception
-                )
-            }
-        }
 
         // Lama - Resolves package names to restricted applications
         restrictedAppRepository =
@@ -480,8 +521,45 @@ class AppAccessibilityService : AccessibilityService() {
                 interventionRepository = interventionRepository
             )
 
+        //Ragahd-: Load the saved challenge interval before starting app monitoring.
+        serviceScope.launch {
+            try {
+                val user = userRepository.getUser()
+
+                if (user == null) {
+                    Log.w("MinderLimit", "No local user found; using default challenge interval")
+                } else {
+                    val settings =
+                        userSettingsRepository.getSettingsByUserId(user.userId)
+
+                    if (settings == null) {
+                        Log.w("MinderLimit", "No saved settings found; using default challenge interval")
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            usageLimitMonitor.setChallengeInterval(settings.challengeInterval)
+
+                            Log.d(
+                                "MinderLimit",
+                                "Challenge interval loaded: ${settings.challengeInterval} minutes"
+                            )
+                        }
+                    }
+                }
+            } catch (exception: Exception) {
+                Log.e(
+                    "MinderLimit",
+                    "Failed to load challenge interval; using default interval",
+                    exception
+                )
+            } finally {
+                withContext(Dispatchers.Main) {
+                    loadSelectedApps()
+                }
+            }
+        }
+
         // Lama - Starts loading selected apps after all monitoring dependencies are ready
-        loadSelectedApps()
+
 
         Log.d(
             "MinderAccessibility",
@@ -737,6 +815,7 @@ class AppAccessibilityService : AccessibilityService() {
             }
         }
     }
+
     // Lama - Checks the daily limit before allowing monitoring
     private fun checkDailyLimitOnOpen(packageName: String) {
 
@@ -774,6 +853,27 @@ class AppAccessibilityService : AccessibilityService() {
                 ) ?: return@launch
 
                 if (!app.isEnabled) return@launch
+
+
+                // Lama - Check the shared challenge lock first.
+                val activeLock =
+                    interventionRepository.getActiveLockForUser(
+                        userId = user.userId,
+                        currentTimeMillis = System.currentTimeMillis()
+                    )
+
+                if (activeLock != null) {
+                    withContext(Dispatchers.Main) {
+                        if (
+                            foregroundPackageName == packageName &&
+                            checkVersion == foregroundChangeVersion
+                        ) {
+                            showChallengeLocked()
+                        }
+                    }
+                    return@launch
+                }
+
 
                 val reached = hasReachedDailyLimit(
                     packageName = packageName,
@@ -881,6 +981,25 @@ class AppAccessibilityService : AccessibilityService() {
 
                 if (!restrictedApp.isEnabled) return@launch
 
+                // Lama - Check the shared lock before pending challenges.
+                val activeLock = interventionRepository.getActiveLockForUser(
+                    userId = user.userId,
+                    currentTimeMillis = System.currentTimeMillis()
+                )
+
+                if (activeLock != null) {
+                    withContext(Dispatchers.Main) {
+                        if (
+                            foregroundPackageName == packageName &&
+                            checkVersion == foregroundChangeVersion &&
+                            !isBlockingActive
+                        ) {
+                            showChallengeLocked()
+                        }
+                    }
+                    return@launch
+                }
+
                 val pending =
                     interventionRepository.getPendingInterventionForUser(
                         user.userId
@@ -897,9 +1016,22 @@ class AppAccessibilityService : AccessibilityService() {
                         return@withContext
                     }
 
+                    // Lama - Restore monitoring state after the saved lock expires.
+                    if (isChallengeLocked && activeLock == null) {
+                        isChallengeLocked = false
+                        isChallengeActive = false
+                        pendingChallengePackage = null
+                        monitoringApprovedPackage = null
+                        dailyLimitCheckedPackage = null
+
+                        // Lama - Recheck the daily limit before allowing access.
+                        checkDailyLimitOnOpen(packageName)
+                        return@withContext
+                    }
+
                     if (pending != null) {
 
-                        // Lama - Reopens the unfinished challenge
+                        // Lama - Reopen the unfinished challenge.
                         pauseLimitMonitoring()
 
                         showChallenge(
@@ -908,6 +1040,15 @@ class AppAccessibilityService : AccessibilityService() {
                             packageName = packageName
                         )
 
+                    } else if (!isChallengeActive) {
+
+                        // Lama - Approve monitoring when no challenge is pending.
+                        monitoringApprovedPackage = packageName
+
+                        Log.d(
+                            "MinderChallenge",
+                            "Monitoring approved | package=$packageName"
+                        )
                     } else if (!isChallengeActive) {
 
                         // Lama - Approves monitoring after confirming no pending challenge
@@ -1066,10 +1207,24 @@ class AppAccessibilityService : AccessibilityService() {
 
                 // Lama - Creates a real challenge and intervention
                 // using the existing challenge engine
+                //Ragahd-: Selects a challenge type for the generated intervention.
+                val challengeType = ChallengeType.values().random()
+
+                //Ragahd-: Reads the user's saved challenge difficulty from Room.
+                val settings = userSettingsRepository.getSettingsByUserId(user.userId)
+
+                //Ragahd-: Uses the saved difficulty and falls back to EASY if settings are unavailable.
+                val difficulty = settings?.challengeDifficulty
+                    ?.uppercase()
+                    ?.takeIf { it in setOf("EASY", "MEDIUM", "HARD") }
+                    ?: "EASY"
+
+                //Ragahd-: Generates and saves the challenge using the selected difficulty.
                 val result =
                     startInterventionUseCase(
                         appId = restrictedApp.id,
-                        difficulty = "EASY"
+                        difficulty = difficulty,
+                        type = challengeType
                     )
 
                 if (result == null) {
@@ -1210,28 +1365,58 @@ class AppAccessibilityService : AccessibilityService() {
 
     // Lama - Unlocks monitoring after the user successfully
 // completes the current challenge
-    private fun onChallengeCompleted() {
 
+
+    // Lama - Unlocks monitoring after the user successfully
+    // completes the current challenge
+
+    //Ragahd-: Keeps the daily block active after its challenge is completed.
+
+    // Lama - Reset the shared timer after a successful challenge.
+    private fun onChallengeCompleted() {
         Log.d(
             "MinderChallenge",
-            "Challenge completed - monitoring unlocked"
+            "Periodic challenge completed successfully"
         )
 
-        // Lama - Allows accessibility events to be processed again
         isChallengeActive = false
-
         pendingChallengePackage = null
-
         displayedInterventionId = null
 
-        // Lama - Starts the next shared usage interval from zero
         usageLimitMonitor.resetMonitoring()
 
         Log.d(
             "MinderLimit",
-            "New challenge monitoring cycle is ready"
+            "New challenge interval is ready"
         )
     }
+
+
+
+    // Lama - Enforce the lock after 3 incorrect answers.
+    private fun onChallengeLocked(interventionId: Int) {
+        Log.d(
+            "MinderChallenge",
+            "Challenge locked | interventionId=$interventionId"
+        )
+
+        pauseLimitMonitoring()
+
+        isChallengeActive = true
+        // Lama - Keep the challenge lock active.
+        isChallengeLocked = true
+        monitoringApprovedPackage = null
+        displayedInterventionId = null
+        pendingChallengePackage = null
+
+        // Lama - The lock has already been saved by the use case.
+        showChallengeLocked()
+    }
+
+
+
+
+
 
     // Lama - Starts periodic usage-limit checking
     private fun startLimitMonitoring() {

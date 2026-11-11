@@ -1,5 +1,6 @@
 package com.example.minder.data.local.entities
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -14,5 +15,9 @@ data class ChallengeEntity(
 
     val difficulty: String,
 
-    val challengeType: String
+    val challengeType: String,
+
+    // Lama - Preserve generated game data for puzzle and logic challenges.
+    @ColumnInfo(defaultValue = "'{}'")
+    val gameData: String = "{}"
 )

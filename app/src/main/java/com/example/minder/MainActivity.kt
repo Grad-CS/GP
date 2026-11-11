@@ -52,8 +52,38 @@ import com.example.minder.domain.usecase.settings.ValidateChallengeIntervalUseCa
 import android.widget.Toast
 //Ragahd-: Import LaunchedEffect to restore saved apps when Home opens
 import androidx.compose.runtime.LaunchedEffect
+import com.example.minder.services.usage.HistoricalUsageDiagnostic
 
+//Ragahd-: Historical usage data source and repositories.
+import com.example.minder.data.datasource.HistoricalUsageDataSourceImpl
+import com.example.minder.data.repository.HistoricalUsageRepositoryImpl
+import com.example.minder.data.repository.UsageBaselineRepositoryImpl
+
+//Ragahd-: Historical baseline use cases.
+import com.example.minder.domain.usecase.usage.CalculateHistoricalBaselineUseCase
+import com.example.minder.domain.usecase.usage.SaveHistoricalBaselinesUseCase
+//LAMA-: Provides access to the active accessibility monitoring service.
 import com.example.minder.services.monitoring.AppAccessibilityService
+//Ragahd-: Daily, weekly, comparison, and saved time statistics use cases.
+import com.example.minder.domain.usecase.usage.GetDailyUsageStatsUseCase
+import com.example.minder.domain.usecase.usage.GetWeeklyUsageStatsUseCase
+import com.example.minder.domain.usecase.usage.GetUsageComparisonUseCase
+import com.example.minder.domain.usecase.usage.GetSavedTimeStatsUseCase
+import com.example.minder.domain.usecase.challenge.GetChallengeSuccessRateUseCase
+import com.example.minder.domain.usecase.intervention.GetInterventionStatisticsUseCase
+import com.example.minder.domain.usecase.usage.GetAverageSessionDurationUseCase
+import com.example.minder.domain.usecase.challenge.GetAttemptsAndChallengeTypesStatisticsUseCase
+import com.example.minder.domain.usecase.usage.GetPeakUsageTimesUseCase
+import com.example.minder.data.repository.InterventionRepositoryImpl
+import com.example.minder.data.repository.ChallengeAttemptRepositoryImpl
+
+//Ragahd-: ViewModel lifecycle management.
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+
+//Ragahd-: Statistics and Progress ViewModels.
+import com.example.minder.features.statistics.StatisticsViewModel
+import com.example.minder.features.progress.ProgressViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -65,6 +95,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var restrictedAppRepository: RestrictedAppRepositoryImpl
     private lateinit var userSettingsRepository: UserSettingsRepositoryImpl
     private lateinit var saveRestrictedAppsUseCase: SaveRestrictedAppsUseCase
+
+    //Ragahd-: Handles saving fixed historical usage baselines.
+    private lateinit var saveHistoricalBaselinesUseCase: SaveHistoricalBaselinesUseCase
     private lateinit var validateChallengeIntervalUseCase: ValidateChallengeIntervalUseCase
     private lateinit var userRepository: UserRepositoryImpl
 
@@ -82,6 +115,38 @@ class MainActivity : ComponentActivity() {
     private lateinit var saveQuestionnaireResultUseCase: SaveQuestionnaireResultUseCase
 
     val appStateHandler = AppStateHandler()
+    //Ragahd-: Provides daily usage statistics.
+    private lateinit var getDailyUsageStatsUseCase: GetDailyUsageStatsUseCase
+
+    //Ragahd-: Provides weekly usage statistics.
+    private lateinit var getWeeklyUsageStatsUseCase: GetWeeklyUsageStatsUseCase
+
+    //Ragahd-: Compares current and previous week usage.
+    private lateinit var getUsageComparisonUseCase: GetUsageComparisonUseCase
+
+    //Ragahd-: Calculates saved time statistics.
+    private lateinit var getSavedTimeStatsUseCase: GetSavedTimeStatsUseCase
+
+    //Ragahd-: Average session duration statistics
+    private lateinit var getAverageSessionDurationUseCase: GetAverageSessionDurationUseCase
+
+    //Ragahd-: Peak usage times statistics
+    private lateinit var getPeakUsageTimesUseCase: GetPeakUsageTimesUseCase
+
+    //Ragahd-: Intervention statistics
+    private lateinit var getInterventionStatisticsUseCase: GetInterventionStatisticsUseCase
+
+    //Ragahd-: Challenge success rate statistics
+    private lateinit var getChallengeSuccessRateUseCase: GetChallengeSuccessRateUseCase
+
+    //Ragahd-: Attempts and challenge types statistics
+    private lateinit var getAttemptsAndChallengeTypesStatisticsUseCase: GetAttemptsAndChallengeTypesStatisticsUseCase
+
+    //Ragahd-: Provides statistics data to the Statistics feature.
+    private lateinit var statisticsViewModel: StatisticsViewModel
+
+    //Ragahd-: Provides progress data to the Progress feature.
+    private lateinit var progressViewModel: ProgressViewModel
 
     //Ragahd-: Navigate according to the saved onboarding state
     private fun navigateAfterSplash() {
@@ -257,6 +322,27 @@ class MainActivity : ComponentActivity() {
                                         selectedApps = appsToSaveAsDomain
                                     )
 
+                                    //Ragahd-: Generate historical baselines when Usage Access is available.
+                                    if (usagePermissionManager.hasUsageAccess()) {
+                                        try {
+                                            val savedBaselineAppIds = saveHistoricalBaselinesUseCase(
+                                                userId = user.userId
+                                            )
+
+                                            Log.d(
+                                                "HistoricalBaseline",
+                                                "Baselines saved for app IDs: $savedBaselineAppIds"
+                                            )
+                                        } catch (e: Exception) {
+                                            //Ragahd-: Keep app selection working even if baseline generation fails.
+                                            Log.e(
+                                                "HistoricalBaseline",
+                                                "Failed to generate historical baselines",
+                                                e
+                                            )
+                                        }
+                                    }
+
                                     //Ragahd-: Update the selected apps displayed on Home
                                     selectedAppsList = appsToSave
 
@@ -350,7 +436,6 @@ class MainActivity : ComponentActivity() {
                                         AppAccessibilityService.notifyChallengeIntervalChanged(
                                             intervalMinutes
                                         )
-
                                         Log.d(
                                             "MinderLimit",
                                             "Saved challenge interval: $intervalMinutes minutes"
@@ -415,6 +500,27 @@ class MainActivity : ComponentActivity() {
                 usagePermissionManager = UsagePermissionManager(this@MainActivity)
                 database = MinderDatabase.getDatabase(applicationContext)
 
+                //Ragahd-: Check whether historical usage access is available.
+                val hasUsageAccess = usagePermissionManager.hasUsageAccess()
+
+                Log.d(
+                    "HistoricalDiagnostic",
+                    "Usage Access granted: $hasUsageAccess"
+                )
+
+                if (hasUsageAccess) {
+                    //Ragahd-: Run historical usage diagnostics on the IO dispatcher.
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        HistoricalUsageDiagnostic(this@MainActivity)
+                            .inspectHistoricalUsage(14)
+                    }
+                } else {
+                    Log.e(
+                        "HistoricalDiagnostic",
+                        "Historical diagnostic skipped because Usage Access is not granted."
+                    )
+                }
+
                 ChallengeSeeder.seedIfEmpty(database.challengeDao())
 
                 usageStatsService = UsageStatsService(this@MainActivity)
@@ -438,6 +544,30 @@ class MainActivity : ComponentActivity() {
                 restrictedAppRepository = RestrictedAppRepositoryImpl(database.restrictedAppDao())
                 userSettingsRepository = UserSettingsRepositoryImpl(database.userSettingsDao())
 
+                //Ragahd-: Create historical usage data source.
+                val historicalUsageDataSource =
+                    HistoricalUsageDataSourceImpl(applicationContext)
+
+//Ragahd-: Create historical usage repository.
+                val historicalUsageRepository =
+                    HistoricalUsageRepositoryImpl(historicalUsageDataSource)
+
+//Ragahd-: Create usage baseline repository.
+                val usageBaselineRepository =
+                    UsageBaselineRepositoryImpl(database.usageBaselineDao())
+
+//Ragahd-: Create historical baseline calculator.
+                val calculateHistoricalBaselineUseCase =
+                    CalculateHistoricalBaselineUseCase()
+
+//Ragahd-: Create historical baseline saving use case.
+                saveHistoricalBaselinesUseCase = SaveHistoricalBaselinesUseCase(
+                    restrictedAppRepository = restrictedAppRepository,
+                    historicalUsageRepository = historicalUsageRepository,
+                    calculateHistoricalBaselineUseCase = calculateHistoricalBaselineUseCase,
+                    usageBaselineRepository = usageBaselineRepository
+                )
+
                 saveRestrictedAppsUseCase = SaveRestrictedAppsUseCase(
                     restrictedAppRepository = restrictedAppRepository
                 )
@@ -448,6 +578,110 @@ class MainActivity : ComponentActivity() {
                 )
                 val usageSessionRepository = UsageSessionRepositoryImpl(database.usageSessionDao())
                 val dailyUsageRepository = DailyUsageRepositoryImpl(database.dailyUsageDao())
+                //Ragahd-: Initialize intervention repository
+                val interventionRepository = InterventionRepositoryImpl(
+                    database.interventionDao()
+                )
+
+                //Ragahd-: Initialize challenge attempt repository
+                val challengeAttemptRepository = ChallengeAttemptRepositoryImpl(
+                    database.challengeAttemptDao()
+                )
+
+                //Ragahd-: Initialize daily usage statistics.
+                getDailyUsageStatsUseCase = GetDailyUsageStatsUseCase(
+                    restrictedAppRepository = restrictedAppRepository,
+                    dailyUsageRepository = dailyUsageRepository
+                )
+
+                //Ragahd-: Initialize saved time statistics.
+                getSavedTimeStatsUseCase = GetSavedTimeStatsUseCase(
+                    restrictedAppRepository = restrictedAppRepository,
+                    dailyUsageRepository = dailyUsageRepository,
+                    usageBaselineRepository = usageBaselineRepository
+                )
+
+                //Ragahd-: Initialize weekly usage statistics.
+                getWeeklyUsageStatsUseCase = GetWeeklyUsageStatsUseCase(
+                    restrictedAppRepository = restrictedAppRepository,
+                    dailyUsageRepository = dailyUsageRepository
+                )
+
+                //Ragahd-: Initialize weekly usage comparison.
+                getUsageComparisonUseCase = GetUsageComparisonUseCase(
+                    getWeeklyUsageStatsUseCase = getWeeklyUsageStatsUseCase
+                )
+
+                //Ragahd-: Initialize average session duration statistics
+                getAverageSessionDurationUseCase = GetAverageSessionDurationUseCase(
+                    restrictedAppRepository,
+                    usageSessionRepository
+                )
+
+//Ragahd-: Initialize peak usage times statistics
+                getPeakUsageTimesUseCase = GetPeakUsageTimesUseCase(
+                    restrictedAppRepository,
+                    usageSessionRepository
+                )
+
+//Ragahd-: Initialize intervention statistics
+                getInterventionStatisticsUseCase = GetInterventionStatisticsUseCase(
+                    restrictedAppRepository,
+                    interventionRepository
+                )
+
+//Ragahd-: Initialize challenge success rate statistics
+                getChallengeSuccessRateUseCase = GetChallengeSuccessRateUseCase(
+                    restrictedAppRepository,
+                    interventionRepository
+                )
+
+//Ragahd-: Initialize attempts and challenge types statistics
+                getAttemptsAndChallengeTypesStatisticsUseCase =
+                    GetAttemptsAndChallengeTypesStatisticsUseCase(
+                        challengeAttemptRepository
+                    )
+                //Ragahd-: Create a factory to provide the required use cases to both ViewModels.
+                val statisticsViewModelFactory = object : ViewModelProvider.Factory {
+
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+
+                        if (modelClass.isAssignableFrom(StatisticsViewModel::class.java)) {
+                            @Suppress("UNCHECKED_CAST")
+                            return StatisticsViewModel(
+                                getDailyUsageStatsUseCase = getDailyUsageStatsUseCase,
+                                getWeeklyUsageStatsUseCase = getWeeklyUsageStatsUseCase,
+                                getUsageComparisonUseCase = getUsageComparisonUseCase,
+                                getSavedTimeStatsUseCase = getSavedTimeStatsUseCase,
+                                getAverageSessionDurationUseCase = getAverageSessionDurationUseCase,
+                                getPeakUsageTimesUseCase = getPeakUsageTimesUseCase
+                            ) as T
+                        }
+
+                        if (modelClass.isAssignableFrom(ProgressViewModel::class.java)) {
+                            @Suppress("UNCHECKED_CAST")
+                            return ProgressViewModel(
+                                getInterventionStatisticsUseCase = getInterventionStatisticsUseCase,
+                                getChallengeSuccessRateUseCase = getChallengeSuccessRateUseCase,
+                                getAttemptsAndChallengeTypesStatisticsUseCase =
+                                    getAttemptsAndChallengeTypesStatisticsUseCase
+                            ) as T
+                        }
+
+                        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+                    }
+                }
+
+//Ragahd-: Initialize both ViewModels using the Activity ViewModelStore.
+                statisticsViewModel = ViewModelProvider(
+                    this@MainActivity,
+                    statisticsViewModelFactory
+                )[StatisticsViewModel::class.java]
+
+                progressViewModel = ViewModelProvider(
+                    this@MainActivity,
+                    statisticsViewModelFactory
+                )[ProgressViewModel::class.java]
 
                 saveUsageSessionsUseCase = SaveUsageSessionsUseCase(
                     restrictedAppRepository = restrictedAppRepository,
@@ -459,9 +693,25 @@ class MainActivity : ComponentActivity() {
                     dailyUsageRepository = dailyUsageRepository
                 )
 
-                //Ragahd-: Mark services ready before routing from splash
+                //Ragahd-: Initialize the local user before loading statistics.
                 initializeLocalUserUseCase()
                 localUserInitialized = true
+
+                //Ragahd-: Retrieve the initialized user and load statistics.
+                val currentUser = userRepository.getUser()
+
+                if (currentUser != null) {
+                    statisticsViewModel.loadStatistics(
+                        userId = currentUser.userId
+                    )
+
+                    progressViewModel.loadProgress(
+                        userId = currentUser.userId
+                    )
+                } else {
+                    Log.e("MainActivity", "Unable to load statistics: user not found.")
+                }
+
                 servicesInitialized = true
 
                 if (splashFinished) {

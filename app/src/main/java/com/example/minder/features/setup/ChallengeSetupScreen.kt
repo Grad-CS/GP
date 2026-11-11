@@ -180,7 +180,7 @@ fun ChallengeSetupScreen(
             Button(
                 onClick = {
                     // التحقق: هل الفاصل الزمني للتحدي أكبر من الحد اليومي المحدد للتطبيق؟
-                    if (selectedInterval > dailyLimitMinutes) {
+                    if (selectedInterval >= dailyLimitMinutes) {
                         errorMessage = "Warning: Challenge interval ($selectedInterval mins) cannot exceed the app's daily limit ($dailyLimitMinutes mins)!"
                     } else {
                         errorMessage = null

@@ -1,6 +1,7 @@
 package com.example.minder.domain.repository
 
 import com.example.minder.domain.model.ChallengeAttempt
+import com.example.minder.domain.model.ChallengeAttemptWithType
 
 interface ChallengeAttemptRepository {
 
@@ -23,4 +24,11 @@ interface ChallengeAttemptRepository {
     suspend fun getAttemptCount(
         interventionId: Int
     ): Int
+
+    //Ragahd-: Retrieves challenge attempts with their types within a specific period.
+    suspend fun getAttemptsWithTypeForPeriod(
+        userId: Int,
+        startTime: Long,
+        endTime: Long
+    ): List<ChallengeAttemptWithType>
 }

@@ -87,4 +87,37 @@ interface InterventionDao {
 
     @Delete
     suspend fun deleteIntervention(intervention: InterventionEntity)
+
+    // Lama - Finds an active shared lock until its expiration time.
+    @Query("""
+    SELECT i.*
+    FROM intervention AS i
+    INNER JOIN restricted_app AS r
+        ON i.appId = r.appId
+    WHERE r.userId = :userId
+      AND i.status = 'LOCKED'
+      AND i.unlockTime > :currentTimeMillis
+    ORDER BY i.unlockTime DESC, i.interventionId DESC
+    LIMIT 1
+    """)
+    suspend fun getActiveLockForUser(
+        userId: Int,
+        currentTimeMillis: Long
+    ): InterventionEntity?
+
+
+    // Lama - Finds the latest shared challenge lock for the user.
+    @Query("""
+    SELECT i.*
+    FROM intervention AS i
+    INNER JOIN restricted_app AS r
+        ON i.appId = r.appId
+    WHERE r.userId = :userId
+      AND i.status = 'LOCKED'
+    ORDER BY i.triggerTime DESC, i.interventionId DESC
+    LIMIT 1
+    """)
+    suspend fun getLatestLockForUser(
+        userId: Int
+    ): InterventionEntity?
 }

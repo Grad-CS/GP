@@ -9,6 +9,14 @@ class InterventionRepositoryImpl(
     private val interventionDao: InterventionDao
 ) : InterventionRepository {
 
+    override suspend fun getLatestLockForUser(
+        userId: Int
+    ): Intervention? {
+        return interventionDao
+            .getLatestLockForUser(userId)
+            ?.toDomain()
+    }
+
     // Lama - Returns the pending intervention as a domain model
     override suspend fun getPendingInterventionForUser(
         userId: Int
@@ -80,6 +88,16 @@ class InterventionRepositoryImpl(
         check(updatedRows == 1) {
             "Intervention update failed | interventionId=$interventionId | status=$status | updatedRows=$updatedRows"
         }
+    }
+
+    override suspend fun getActiveLockForUser(
+        userId: Int,
+        currentTimeMillis: Long
+    ): Intervention? {
+        return interventionDao.getActiveLockForUser(
+            userId = userId,
+            currentTimeMillis = currentTimeMillis
+        )?.toDomain()
     }
 }
 

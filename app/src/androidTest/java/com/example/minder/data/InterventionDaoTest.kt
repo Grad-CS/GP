@@ -242,7 +242,15 @@ class InterventionDaoTest {
 
             val interventionId = database.interventionDao()
                 .insertIntervention(
-                    createIntervention(appId, challengeId, 1000L)
+                    //Ragahd-: Creates a pending intervention for the unlock update test.
+                    InterventionEntity(
+                        appId = appId,
+                        challengeId = challengeId,
+                        triggerTime = 1000L,
+                        unlockTime = null,
+                        status = "PENDING",
+                        savedTime = 0
+                    )
                 )
                 .toInt()
 
@@ -269,7 +277,15 @@ class InterventionDaoTest {
 
             val interventionId = database.interventionDao()
                 .insertIntervention(
-                    createIntervention(appId, challengeId, 1000L)
+                    //Ragahd-: Creates a pending intervention for the locked update test.
+                    InterventionEntity(
+                        appId = appId,
+                        challengeId = challengeId,
+                        triggerTime = 1000L,
+                        unlockTime = null,
+                        status = "PENDING",
+                        savedTime = 0
+                    )
                 )
                 .toInt()
 

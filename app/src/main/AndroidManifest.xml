@@ -54,6 +54,10 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTask" />
 
+        <activity
+            android:name=".features.blocking.ChallengeLockedActivity"
+            android:exported="false" />
+
 
 
         <!-- Accessibility service used to monitor foreground target applications -->
