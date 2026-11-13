@@ -41,11 +41,7 @@ fun BlockingScreen(
     interventionId: Int,
     initialRemainingSeconds: Long,
     checkDailyLimitUseCase: CheckDailyLimitUseCase,
-    onTimeFinished: () -> Unit,
-    onTakeChallenge: (
-        appId: Int,
-        interventionId: Int
-    ) -> Unit
+    onTimeFinished: () -> Unit
 ) {
     var remainingSeconds by remember {
         mutableLongStateOf(initialRemainingSeconds)
@@ -145,7 +141,7 @@ fun BlockingScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Take a quick challenge to continue using the app.",
+                text = "You can use this app again tomorrow.",
                 color = TextSecondary,
                 fontSize = 14.sp
             )
@@ -205,36 +201,12 @@ fun BlockingScreen(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Complete the challenge to unlock the app.",
+                text = "Your daily usage limit will reset tomorrow.",
                 color = TextSecondary,
                 fontSize = 13.sp
             )
 
             Spacer(modifier = Modifier.weight(1f))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(58.dp)
-                    .background(
-                        PrimaryBlue,
-                        RoundedCornerShape(15.dp)
-                    )
-                    .clickable {
-                        onTakeChallenge(
-                            appId,
-                            interventionId
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Take the Challenge",
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
 
             Spacer(modifier = Modifier.height(28.dp))
 

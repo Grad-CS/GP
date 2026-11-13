@@ -27,8 +27,13 @@ class ChallengeLockedActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
+    // Lama - Release the screen visibility flag when leaving the lock screen.
+    override fun onStop() {
+        super.onStop()
         AppAccessibilityService.notifyChallengeLockScreenClosed()
+    }
+
+    override fun onDestroy() {
         super.onDestroy()
     }
 }

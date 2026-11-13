@@ -122,81 +122,17 @@ class BlockingActivity : ComponentActivity() {
                         // Nothing yet
                     },
 
-
-                    onTakeChallenge = { selectedAppId, _ ->
-                        if (!isStartingChallenge) {
-                            isStartingChallenge = true
-
-                            lifecycleScope.launch {
-                                try {
-                                    //Ragahd-: Selects a challenge type for the new intervention.
-                                    val challengeType = ChallengeType.values().random()
-
-                                    //Ragahd-: Retrieves the current user from the database.
-                                    val currentUser = userRepository.getUser()
-
-                                    //Ragahd-: Retrieves the current user's saved settings.
-                                    val settings = currentUser?.let { user ->
-                                        userSettingsRepository.getSettingsByUserId(user.userId)
-                                    }
-
-                                    //Ragahd-: Uses the saved difficulty or EASY when settings are unavailable or invalid.
-                                    val difficulty = settings?.challengeDifficulty
-                                        ?.uppercase()
-                                        ?.takeIf { it in setOf("EASY", "MEDIUM", "HARD") }
-                                        ?: "EASY"
-
-                                   //Ragahd-: Creates the intervention using the saved difficulty.
-                                    val result = startInterventionUseCase(
-                                        appId = selectedAppId,
-                                        difficulty = difficulty,
-                                        type = challengeType
-                                    )
-
-                                    //Ragahd-: Logs the intervention and linked challenge IDs.
-                                    Log.d(
-                                        "MinderBlocking",
-                                        "Intervention created | interventionId=${result.interventionId} | " +
-                                                "challengeId=${result.challenge.id} | type=$challengeType"
-                                    )
-
-                                    //Ragahd-: Opens the challenge without finishing the blocking screen.
-                                    val challengeIntent = Intent(
-                                        this@BlockingActivity,
-                                        ChallengeActivity::class.java
-                                    ).apply {
-                                        putExtra(ChallengeActivity.EXTRA_APP_ID, selectedAppId)
-                                        putExtra(
-                                            ChallengeActivity.EXTRA_INTERVENTION_ID,
-                                            result.interventionId
-                                        )
-                                        putExtra(ChallengeActivity.EXTRA_PACKAGE_NAME, packageName)
-                                        putExtra(ChallengeActivity.EXTRA_FROM_DAILY_BLOCK, true)
-                                    }
-
-                                    challengeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    startActivity(challengeIntent)
-
-                                    //Ragahd-: Keeps BlockingActivity underneath the challenge.
-                                } catch (exception: Exception) {
-                                    //Ragahd-: Allows another attempt if challenge creation fails.
-                                    isStartingChallenge = false
-                                    Log.e(
-                                        "MinderBlocking",
-                                        "Failed to create daily-block challenge",
-                                        exception
-                                    )
-                                }
-                            }
-                        }
-                    }
-
                 )
             }
         }
     }
-    override fun onDestroy() {
+    // Lama - Notify monitoring when the blocking screen is no longer visible.
+    override fun onStop() {
+        super.onStop()
         AppAccessibilityService.notifyBlockingClosed()
+    }
+
+    override fun onDestroy() {
         super.onDestroy()
     }
 }

@@ -408,5 +408,16 @@ class GetInterventionStatisticsUseCaseTest {
 
         override suspend fun getPendingInterventionForUser(userId: Int) =
             null
+
+        // Lama - Return an active lock for the specified user, if one exists.
+        override suspend fun getActiveLockForUser(
+            userId: Int,
+            currentTimeMillis: Long
+        ): Intervention? = null
+
+        // Lama - Return the latest lock for the specified user.
+        override suspend fun getLatestLockForUser(
+            userId: Int
+        ): Intervention? = null
     }
 }

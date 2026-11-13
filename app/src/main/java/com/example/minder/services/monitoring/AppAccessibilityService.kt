@@ -35,6 +35,12 @@ import android.view.accessibility.AccessibilityWindowInfo
 import com.example.minder.domain.model.ChallengeType
 import com.example.minder.domain.repository.UserSettingsRepository
 import com.example.minder.features.blocking.ChallengeLockedActivity
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.os.Build
+import android.app.KeyguardManager
+import android.os.PowerManager
 
 
 class AppAccessibilityService : AccessibilityService() {
@@ -127,17 +133,17 @@ class AppAccessibilityService : AccessibilityService() {
         Log.d("MinderLimit", "Challenge interval updated: $minutes minutes")
     }
 
-    // Lama - Clears the blocking screen state
+    // Lama - Release blocking UI state and require a new access check.
     private fun onBlockingClosed() {
 
         isBlockingActive = false
 
-        // Force a new daily limit check on the next app entry
         dailyLimitCheckedPackage = null
+        monitoringApprovedPackage = null
 
         Log.d(
             "MinderBlocking",
-            "Blocking screen closed"
+            "Blocking screen stopped | daily limit recheck required"
         )
     }
 
@@ -260,6 +266,7 @@ class AppAccessibilityService : AccessibilityService() {
             isCheckingDailyLimit ||
             isCheckingPendingChallenge ||
             isBlockingActive ||
+            isDeviceLocked ||
             isChallengeActive
         ) {
             return
@@ -378,6 +385,55 @@ class AppAccessibilityService : AccessibilityService() {
         )
     }
 
+    // Lama - Track the device lock state.
+    private var isDeviceLocked = false
+
+    // Lama - Receive screen lock and unlock events.
+    private val screenReceiver = object : BroadcastReceiver() {
+
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+
+                Intent.ACTION_SCREEN_ON -> {
+
+                    // Lama - Recheck the device after the screen turns on.
+                    monitoringHandler.postDelayed({
+
+                        val keyguardManager =
+                            getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+
+                        if (!keyguardManager.isDeviceLocked) {
+                            isDeviceLocked = false
+                            restoreMonitoringAfterUnlock()
+                        }
+
+                    }, 500L)
+                }
+
+                Intent.ACTION_SCREEN_OFF -> {
+                    isDeviceLocked = true
+                    pauseLimitMonitoring()
+
+                    Log.d(
+                        "MinderForeground",
+                        "Screen off | monitoring paused"
+                    )
+                }
+
+                Intent.ACTION_USER_PRESENT -> {
+                    isDeviceLocked = false
+
+                    // Lama - Restore monitoring after unlocking.
+                    monitoringHandler.postDelayed({
+                        restoreMonitoringAfterUnlock()
+                    }, 350L)
+                }
+            }
+        }
+    }
+
+
+
     // Lama - Checks the shared restricted-content usage every second
     private val monitoringRunnable = object : Runnable {
 
@@ -458,6 +514,29 @@ class AppAccessibilityService : AccessibilityService() {
         // Lama - Stores the active service instance so ChallengeActivity
         // can notify monitoring when the challenge is completed
         instance = this
+
+        // Lama - Register screen lock and unlock events.
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                screenReceiver,
+                filter,
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(screenReceiver, filter)
+        }
+
+        // Lama - Detect whether the device is already locked.
+        val keyguardManager =
+            getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+
+        isDeviceLocked = keyguardManager.isDeviceLocked
 
         // Lama - Initializes the existing Minder database
         val database =
@@ -580,6 +659,34 @@ class AppAccessibilityService : AccessibilityService() {
 
     private fun handleForegroundPackage(packageName: String) {
 
+        // Lama - Refresh the actual device lock state.
+        val keyguardManager =
+            getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+
+        val powerManager =
+            getSystemService(Context.POWER_SERVICE) as PowerManager
+
+        val currentlyLocked =
+            !powerManager.isInteractive || keyguardManager.isDeviceLocked
+
+        if (currentlyLocked) {
+            isDeviceLocked = true
+            pauseLimitMonitoring()
+            return
+        }
+
+        // Lama - Recover when the screen is unlocked.
+        if (isDeviceLocked) {
+            isDeviceLocked = false
+
+            dailyLimitCheckedPackage = null
+            monitoringApprovedPackage = null
+
+            Log.d(
+                "MinderForeground",
+                "Device unlocked | monitoring recovery"
+            )
+        }
         if (foregroundPackageName != packageName) {
 
             Log.d(
@@ -826,14 +933,20 @@ class AppAccessibilityService : AccessibilityService() {
             isBlockingActive
         ) return
 
-        // Recheck an unfinished challenge when entering a restricted app.
+        // Lama - Always verify a saved lock before handling unfinished challenges.
+        if (isChallengeLocked) {
+            if (!isCheckingPendingChallenge) {
+                checkPendingChallenge(packageName)
+            }
+            return
+        }
+
         if (isChallengeActive) {
             if (displayedInterventionId == null && !isCheckingPendingChallenge) {
                 checkPendingChallenge(packageName)
             }
             return
         }
-
         if (dailyLimitCheckedPackage == packageName) return
 
         isCheckingDailyLimit = true
@@ -1016,16 +1129,21 @@ class AppAccessibilityService : AccessibilityService() {
                         return@withContext
                     }
 
-                    // Lama - Restore monitoring state after the saved lock expires.
+                    // Lama - Clear the expired challenge lock without starting nested checks.
                     if (isChallengeLocked && activeLock == null) {
+
                         isChallengeLocked = false
                         isChallengeActive = false
+
                         pendingChallengePackage = null
                         monitoringApprovedPackage = null
                         dailyLimitCheckedPackage = null
 
-                        // Lama - Recheck the daily limit before allowing access.
-                        checkDailyLimitOnOpen(packageName)
+                        Log.d(
+                            "MinderChallenge",
+                            "Challenge lock expired | daily limit must be rechecked"
+                        )
+
                         return@withContext
                     }
 
@@ -1043,15 +1161,6 @@ class AppAccessibilityService : AccessibilityService() {
                     } else if (!isChallengeActive) {
 
                         // Lama - Approve monitoring when no challenge is pending.
-                        monitoringApprovedPackage = packageName
-
-                        Log.d(
-                            "MinderChallenge",
-                            "Monitoring approved | package=$packageName"
-                        )
-                    } else if (!isChallengeActive) {
-
-                        // Lama - Approves monitoring after confirming no pending challenge
                         monitoringApprovedPackage = packageName
 
                         Log.d(
@@ -1531,7 +1640,54 @@ class AppAccessibilityService : AccessibilityService() {
 
         serviceScope.cancel()
 
+        // Lama - Unregister screen events.
+        unregisterReceiver(screenReceiver)
+
         super.onDestroy()
+    }
+
+    // Lama - Recheck the foreground restricted app after unlocking.
+    private fun restoreMonitoringAfterUnlock() {
+
+        // Lama - Verify the actual lock state before restoring monitoring.
+        val keyguardManager =
+            getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+
+        val powerManager =
+            getSystemService(Context.POWER_SERVICE) as PowerManager
+
+        if (!powerManager.isInteractive || keyguardManager.isDeviceLocked) {
+            isDeviceLocked = true
+            return
+        }
+
+        isDeviceLocked = false
+
+        if (!areSelectedAppsLoaded) return
+
+        val packageName =
+            rootInActiveWindow?.packageName?.toString()
+
+        Log.d(
+            "MinderForeground",
+            "Unlock restore | detected=$packageName | previous=$foregroundPackageName"
+        )
+
+        if (packageName == null || packageName !in selectedPackages) {
+            return
+        }
+
+        // Lama - Force access verification even for the same app.
+        foregroundPackageName = packageName
+        foregroundChangeVersion++
+
+        dailyLimitCheckedPackage = null
+        monitoringApprovedPackage = null
+
+        // Lama - Keep the accumulated challenge usage.
+        pauseLimitMonitoring()
+
+        checkDailyLimitOnOpen(packageName)
     }
 
 }

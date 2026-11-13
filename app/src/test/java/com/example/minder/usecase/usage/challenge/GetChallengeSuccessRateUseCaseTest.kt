@@ -367,5 +367,20 @@ class GetChallengeSuccessRateUseCaseTest {
 
         override suspend fun getPendingInterventionForUser(userId: Int) =
             null
+
+        // Lama - Support challenge lock methods in test repository.
+        override suspend fun getActiveLockForUser(
+            userId: Int,
+            currentTimeMillis: Long
+        ): Intervention? {
+            return null
+        }
+
+        // Lama - Support latest challenge lock lookup.
+        override suspend fun getLatestLockForUser(
+            userId: Int
+        ): Intervention? {
+            return null
+        }
     }
 }

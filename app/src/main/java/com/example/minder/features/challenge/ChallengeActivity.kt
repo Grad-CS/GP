@@ -26,9 +26,6 @@ class ChallengeActivity : ComponentActivity() {
 
         val interventionId = intent.getIntExtra(EXTRA_INTERVENTION_ID, -1)
         val appId = intent.getIntExtra(EXTRA_APP_ID, -1)
-        AppAccessibilityService.notifyChallengeCompleted()
-        moveTaskToBack(true)
-        finish()
 
         Log.d("MinderChallenge", "Opened | interventionId=$interventionId | appId=$appId")
         if (interventionId == -1 || appId == -1) {
@@ -81,10 +78,18 @@ class ChallengeActivity : ComponentActivity() {
                     interventionId = interventionId,
                     viewModel = challengeViewModel,
                     onSuccess = {
+                        // Lama - Mark the periodic challenge as completed.
                         challengeFinished = true
-                        Log.d("MinderChallenge", "Succeeded | fromDailyBlock=$fromDailyBlock")
-                        AppAccessibilityService.notifyChallengeCompleted(fromDailyBlock)
-                        if (!fromDailyBlock) moveTaskToBack(true)
+
+                        Log.d(
+                            "MinderChallenge",
+                            "Periodic challenge completed successfully"
+                        )
+
+                        // Lama - Notify monitoring only after a correct answer.
+                        AppAccessibilityService.notifyChallengeCompleted()
+
+                        moveTaskToBack(true)
                         finish()
                     },
 
