@@ -21,6 +21,7 @@ sealed class AppScreen {
     data object Permissions : AppScreen()
 
     data object Statistics : AppScreen()
+    data object Progress : AppScreen()
 
     data object Settings : AppScreen()
 }

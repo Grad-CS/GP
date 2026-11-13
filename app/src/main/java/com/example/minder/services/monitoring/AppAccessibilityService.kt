@@ -41,6 +41,9 @@ import android.content.IntentFilter
 import android.os.Build
 import android.app.KeyguardManager
 import android.os.PowerManager
+import com.example.minder.data.repository.ExtensionRequestRepositoryImpl
+import com.example.minder.domain.repository.ExtensionRequestRepository
+import com.example.minder.domain.usecase.usage.CheckDailyExtensionUseCase
 
 
 class AppAccessibilityService : AccessibilityService() {
@@ -230,6 +233,12 @@ class AppAccessibilityService : AccessibilityService() {
 
     // Lama - Checks the daily limit every 5 seconds
     private val dailyLimitCheckIntervalMillis = 5000L
+
+    //Ragahd-: Provides access to saved daily extension requests.
+    private lateinit var extensionRequestRepository: ExtensionRequestRepository
+
+    //Ragahd-: Checks whether an app's daily extension is still active.
+    private lateinit var checkDailyExtensionUseCase: CheckDailyExtensionUseCase
 
 
     private fun logSystemUiWindow(event: AccessibilityEvent) {
@@ -600,6 +609,18 @@ class AppAccessibilityService : AccessibilityService() {
                 interventionRepository = interventionRepository
             )
 
+        //Ragahd-: Initializes the repository for daily extension requests.
+        extensionRequestRepository =
+            ExtensionRequestRepositoryImpl(
+                database.extensionRequestDao()
+            )
+
+        //Ragahd-: Initializes the use case that validates active extensions.
+        checkDailyExtensionUseCase =
+            CheckDailyExtensionUseCase(
+                extensionRequestRepository = extensionRequestRepository
+            )
+
         //Ragahd-: Load the saved challenge interval before starting app monitoring.
         serviceScope.launch {
             try {
@@ -829,9 +850,19 @@ class AppAccessibilityService : AccessibilityService() {
 
     // Lama - Checks whether today's Android usage has reached the app's daily limit
     private suspend fun hasReachedDailyLimit(
+        appId: Int,
         packageName: String,
         dailyLimitMinutes: Int
     ): Boolean {
+
+        //Ragahd-: Allows usage while a valid daily extension is active.
+        if (checkDailyExtensionUseCase(appId = appId)) {
+            Log.d(
+                "MinderBlocking",
+                "Daily extension active | appId=$appId | package=$packageName"
+            )
+            return false
+        }
 
         val usedSeconds = usageStatsService.getTodayUsageSeconds(packageName)
         val limitSeconds = dailyLimitMinutes.toLong() * 60L
@@ -865,6 +896,7 @@ class AppAccessibilityService : AccessibilityService() {
                 if (!app.isEnabled) return@launch
 
                 val reached = hasReachedDailyLimit(
+                    appId = app.id,
                     packageName = packageName,
                     dailyLimitMinutes = app.dailyLimit
                 )
@@ -989,6 +1021,7 @@ class AppAccessibilityService : AccessibilityService() {
 
 
                 val reached = hasReachedDailyLimit(
+                    appId = app.id,
                     packageName = packageName,
                     dailyLimitMinutes = app.dailyLimit
                 )
@@ -1285,6 +1318,7 @@ class AppAccessibilityService : AccessibilityService() {
 
                 // Lama - Checks actual Android usage before creating a challenge
                 val dailyLimitReached = hasReachedDailyLimit(
+                    appId = restrictedApp.id,
                     packageName = packageName,
                     dailyLimitMinutes = restrictedApp.dailyLimit
                 )

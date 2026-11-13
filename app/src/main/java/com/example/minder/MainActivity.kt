@@ -85,6 +85,11 @@ import androidx.lifecycle.ViewModelProvider
 import com.example.minder.features.statistics.StatisticsViewModel
 import com.example.minder.features.progress.ProgressViewModel
 
+//Ragahd-: Statistics screen.
+import com.example.minder.features.statistics.StatisticsScreen
+//Ragahd-: Progress screen.
+import com.example.minder.features.progress.ProgressScreen
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var usagePermissionManager: UsagePermissionManager
@@ -157,9 +162,11 @@ class MainActivity : ComponentActivity() {
                 appStateHandler.navigateTo(
                     if (onboardingCompleted) {
                         AppScreen.Home
+
                     } else {
                         AppScreen.Onboarding
                     }
+
                 )
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to read onboarding state", e)
@@ -474,15 +481,45 @@ class MainActivity : ComponentActivity() {
                             selectedApps = selectedAppsList,
 
                             onSettingsClick = {
-                                // التوجه لصفحة الإعدادات
+                                // Settings navigation will be connected later.
                             },
 
                             onTabSelected = { tabIndex ->
-                                Log.d("MinderHome", "Tab index clicked: $tabIndex")
+                                when (tabIndex) {
+                                    1 -> {
+                                        //Ragahd-: Navigate to Statistics screen.
+                                        appStateHandler.navigateTo(AppScreen.Statistics)
+                                    }
+
+                                    2 -> {
+                                        //Ragahd-: Navigate to Progress screen.
+                                        appStateHandler.navigateTo(AppScreen.Progress)
+                                    }
+                                }
                             }
                         )
                     }
 
+                    //Ragahd-: Display Statistics using the existing Activity ViewModel.
+                    is AppScreen.Statistics -> {
+                        StatisticsScreen(
+                            viewModel = statisticsViewModel,
+                            onBackClick = {
+                                //Ragahd-: Return to Home screen.
+                                appStateHandler.navigateTo(AppScreen.Home)
+                            }
+                        )
+                    }
+                    //Ragahd-: Display Progress using the existing Activity ViewModel.
+                    is AppScreen.Progress -> {
+                        ProgressScreen(
+                            viewModel = progressViewModel,
+                            onBackClick = {
+                                //Ragahd-: Return to Home screen.
+                                appStateHandler.navigateTo(AppScreen.Home)
+                            }
+                        )
+                    }
                     else -> {
                         WelcomeScreen(
                             onGetStartedClick = {
@@ -490,6 +527,7 @@ class MainActivity : ComponentActivity() {
                                 appStateHandler.navigateTo(AppScreen.Permissions)
                             }
                         )
+
                     }
                 }
             }

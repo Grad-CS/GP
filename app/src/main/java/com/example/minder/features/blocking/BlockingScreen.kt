@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.example.minder.domain.usecase.usage.CheckDailyLimitUseCase
 import kotlinx.coroutines.delay
 import java.util.Calendar
+import androidx.compose.foundation.layout.Row
 
 private val PrimaryDark = Color(0xFF071B33)
 private val PrimaryBlue = Color(0xFF3289F5)
@@ -41,6 +42,16 @@ fun BlockingScreen(
     interventionId: Int,
     initialRemainingSeconds: Long,
     checkDailyLimitUseCase: CheckDailyLimitUseCase,
+
+    //Ragahd-: Indicates whether today's extension has already been used.
+    extensionAlreadyUsedToday: Boolean?,
+
+    //Ragahd-: Handles the selected extension duration.
+    onRequestExtension: (Int) -> Unit,
+
+    //Ragahd-: Exits the blocked app without granting an extension.
+    onExitApp: () -> Unit,
+
     onTimeFinished: () -> Unit
 ) {
     var remainingSeconds by remember {
@@ -49,6 +60,10 @@ fun BlockingScreen(
 
     var limitExceeded by remember {
         mutableStateOf(false)
+    }
+    //Ragahd-: Tracks the selected extension duration.
+    var selectedExtensionMinutes by remember {
+        mutableStateOf(10)
     }
 
     LaunchedEffect(appId) {
@@ -205,6 +220,108 @@ fun BlockingScreen(
                 color = TextSecondary,
                 fontSize = 13.sp
             )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+//Ragahd-: Shows extension options only after checking today's request.
+            if (extensionAlreadyUsedToday == false) {
+
+                Text(
+                    text = "Need more time?",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    listOf(10, 15, 20).forEach { minutes ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(
+                                    if (selectedExtensionMinutes == minutes)
+                                        PrimaryBlue
+                                    else
+                                        CircleBackground,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    selectedExtensionMinutes = minutes
+                                }
+                                .padding(vertical = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$minutes min",
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(PrimaryBlue, RoundedCornerShape(12.dp))
+                        .clickable {
+                            onRequestExtension(selectedExtensionMinutes)
+                        }
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Extend Time",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
+
+            } else if (extensionAlreadyUsedToday == true) {
+
+                Text(
+                    text = "You've already used your daily extension.",
+                    color = TextSecondary,
+                    fontSize = 13.sp
+                )
+
+            } else {
+
+                Text(
+                    text = "Checking extension availability...",
+                    color = TextSecondary,
+                    fontSize = 13.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CircleBackground, RoundedCornerShape(12.dp))
+                    .clickable {
+                        onExitApp()
+                    }
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Exit App",
+                    color = TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp
+                )
+            }
 
             Spacer(modifier = Modifier.weight(1f))
 
