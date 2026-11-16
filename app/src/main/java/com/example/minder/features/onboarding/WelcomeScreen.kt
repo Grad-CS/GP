@@ -1,203 +1,483 @@
+
 package com.example.minder.features.onboarding
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val DarkBackground = Color(0xFF031938)
-private val PrimaryBlue = Color(0xFF2F82FF)
-private val PhoneBorderBlue = Color(0xFF1E6FD9)
-private val PhoneScreenBlue = Color(0xFF1350A6)
-private val PauseCircleBg = Color(0xFFEBF3FF)
-private val PauseIconBlue = Color(0xFF0B418C)
-private val SparkBlue = Color(0xFF4293FF)
-private val TextWhite = Color(0xFFFFFFFF)
-private val TextMuted = Color(0xFF9EACB8)
+import com.example.minder.ui.theme.PacificoFont
+import com.example.minder.ui.theme.BodoniFont
+import com.example.minder.ui.theme.JakartaFont
 
+// Lama - Minder welcome screen colour palette
+private val Purple = Color(0xFF9061D8)
+private val Teal = Color(0xFF38C9C5)
+private val Pink = Color(0xFFF3A1C8)
+private val Ink = Color(0xFF302342)
+private val Muted = Color(0xFF655B76)
+private val Lavender = Color(0xFFF5EEFC)
+private val LightTeal = Color(0xFFE5F8F6)
+private val PaleTeal = Color(0xFFF1FCFB)
+
+// Lama - UI only. Keep navigation controlled by MainActivity.
 @Composable
 fun WelcomeScreen(
     onGetStartedClick: () -> Unit = {}
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DarkBackground)
-            .padding(horizontal = 28.dp, vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        // العنوان العلوي
-        Text(
-            text = "Minder",
-            color = TextWhite,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .padding(top = 32.dp)
-                .align(Alignment.CenterHorizontally)
+    val entrance = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        entrance.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 700)
         )
+    }
 
-        // النص الترحيبي والصورة التوضيحية
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
+    CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Ltr
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
         ) {
-            Text(
-                text = "Take control\nof your screen time",
-                color = TextWhite,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 40.sp,
+
+            WelcomeBackground()
+
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Set limits, face challenges,\nreclaim your focus.",
-                color = TextMuted,
-                fontSize = 17.sp,
-                lineHeight = 24.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-            )
-
-            Spacer(modifier = Modifier.height(40.dp))
-
-            // الشكل الرسومي المميز للجوالين وشارة التوقف
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.size(240.dp, 220.dp)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(
+                        horizontal = 22.dp,
+                        vertical = 18.dp
+                    ),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width
-                    val h = size.height
 
-                    // 1. أشرطة الشرارات المضيئة الجانبية (Spark Lines)
-                    drawLine(SparkBlue, Offset(w * 0.12f, h * 0.35f), Offset(w * 0.22f, h * 0.42f), strokeWidth = 8f, cap = StrokeCap.Round)
-                    drawLine(SparkBlue, Offset(w * 0.08f, h * 0.52f), Offset(w * 0.18f, h * 0.53f), strokeWidth = 8f, cap = StrokeCap.Round)
+                Spacer(modifier = Modifier.height(8.dp))
 
-                    drawLine(SparkBlue, Offset(w * 0.88f, h * 0.32f), Offset(w * 0.78f, h * 0.42f), strokeWidth = 8f, cap = StrokeCap.Round)
-                    drawLine(SparkBlue, Offset(w * 0.92f, h * 0.48f), Offset(w * 0.82f, h * 0.52f), strokeWidth = 8f, cap = StrokeCap.Round)
+                // Logo animation
+                Box(
+                    modifier = Modifier
+                        .size(180.dp)
+                        .graphicsLayer {
+                            alpha = entrance.value
+                            translationY =
+                                (1f - entrance.value) * 18.dp.toPx()
+                            scaleX = 0.96f + 0.04f * entrance.value
+                            scaleY = 0.96f + 0.04f * entrance.value
+                        }
+                ) {
+                    MinderLogo()
+                }
 
-                    // 2. الجوال الرأسي الخلفي (Vertical Phone)
-                    val vPhoneW = w * 0.48f
-                    val vPhoneH = h * 0.72f
-                    val vPhoneLeft = (w - vPhoneW) / 2 - 15f
-                    val vPhoneTop = h * 0.05f
+                Spacer(modifier = Modifier.height(4.dp))
 
-                    drawRoundRect(
-                        color = PhoneBorderBlue,
-                        topLeft = Offset(vPhoneLeft, vPhoneTop),
-                        size = Size(vPhoneW, vPhoneH),
-                        cornerRadius = CornerRadius(36f, 36f)
-                    )
-                    drawRoundRect(
-                        color = PhoneScreenBlue,
-                        topLeft = Offset(vPhoneLeft + 8f, vPhoneTop + 8f),
-                        size = Size(vPhoneW - 16f, vPhoneH - 16f),
-                        cornerRadius = CornerRadius(28f, 28f)
-                    )
-                    drawRoundRect(
-                        color = PhoneBorderBlue,
-                        topLeft = Offset(vPhoneLeft + (vPhoneW / 2) - 24f, vPhoneTop + 14f),
-                        size = Size(48f, 10f),
-                        cornerRadius = CornerRadius(5f, 5f)
-                    )
-
-                    // 3. الجوال الأفقي الأمامي (Horizontal Phone)
-                    val hPhoneW = w * 0.72f
-                    val hPhoneH = h * 0.42f
-                    val hPhoneLeft = (w - hPhoneW) / 2 + 15f
-                    val hPhoneTop = h * 0.48f
-
-                    drawRoundRect(
-                        color = PhoneBorderBlue,
-                        topLeft = Offset(hPhoneLeft, hPhoneTop),
-                        size = Size(hPhoneW, hPhoneH),
-                        cornerRadius = CornerRadius(32f, 32f)
-                    )
-                    drawRoundRect(
-                        color = PhoneScreenBlue,
-                        topLeft = Offset(hPhoneLeft + 8f, hPhoneTop + 8f),
-                        size = Size(hPhoneW - 16f, hPhoneH - 16f),
-                        cornerRadius = CornerRadius(24f, 24f)
-                    )
-                    drawRoundRect(
-                        color = PhoneBorderBlue,
-                        topLeft = Offset(hPhoneLeft + hPhoneW - 22f, hPhoneTop + (hPhoneH / 2) - 18f),
-                        size = Size(8f, 36f),
-                        cornerRadius = CornerRadius(4f, 4f)
+                // Brand and tagline - centred alignment
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Minder",
+                        modifier = Modifier.fillMaxWidth(),
+                        fontFamily = PacificoFont,
+                        fontSize = 49.sp,
+                        lineHeight = 70.sp,
+                        fontWeight = FontWeight.Normal,
+                        textAlign = TextAlign.Center,
+                        style = TextStyle(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(Purple, Pink)
+                            )
+                        )
                     )
 
-                    // 4. الدائرة المركزية البيضاء المضبوطة لعلامة التوقف المؤقت
-                    val circleRadius = w * 0.19f
-                    val circleCenter = Offset(w * 0.46f, h * 0.50f)
-
-                    drawCircle(
-                        color = PauseCircleBg,
-                        radius = circleRadius,
-                        center = circleCenter
-                    )
-
-                    // أعمدة رمز التوقف الداكنة والمحددة بدقة
-                    val barW = 16f
-                    val barH = 58f
-                    val barGap = 10f
-
-                    // الخط الأيسر
-                    drawRoundRect(
-                        color = PauseIconBlue,
-                        topLeft = Offset(circleCenter.x - barGap - barW, circleCenter.y - (barH / 2)),
-                        size = Size(barW, barH),
-                        cornerRadius = CornerRadius(8f, 8f)
-                    )
-
-                    // الخط الأيمن
-                    drawRoundRect(
-                        color = PauseIconBlue,
-                        topLeft = Offset(circleCenter.x + barGap, circleCenter.y - (barH / 2)),
-                        size = Size(barW, barH),
-                        cornerRadius = CornerRadius(8f, 8f)
+                    Text(
+                        text = "Mind Your Time, Live Your Life",
+                        modifier = Modifier.fillMaxWidth(),
+                        fontFamily = BodoniFont,
+                        fontSize = 18.sp,
+                        lineHeight = 25.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontStyle = FontStyle.Italic,
+                        color = Ink,
+                        textAlign = TextAlign.Center
                     )
                 }
+
+                Spacer(modifier = Modifier.height(26.dp))
+
+                // Feature cards - 2 x 2 layout
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        FeatureCard(
+                            symbol = "◷",
+                            title = "Screen time",
+                            description = "See where your day goes.",
+                            bg = LightTeal,
+                            accent = Teal,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        FeatureCard(
+                            symbol = "✓",
+                            title = "Less distraction",
+                            description = "Quiet the apps that pull you away.",
+                            bg = Color.White,
+                            accent = Teal,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        FeatureCard(
+                            symbol = "✦",
+                            title = "Mind challenges",
+                            description = "Small games that build focus.",
+                            bg = Lavender,
+                            accent = Purple,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        FeatureCard(
+                            symbol = "⚖",
+                            title = "Digital balance",
+                            description = "Healthy habits, one day at a time.",
+                            bg = PaleTeal,
+                            accent = Teal,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // Get Started button
+                Button(
+                    onClick = onGetStartedClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(62.dp),
+                    shape = RoundedCornerShape(50),
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Teal
+                    )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colorStops = arrayOf(
+                                        0f to Teal,
+                                        0.6f to Teal,
+                                        1f to Purple
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Get Started",
+                            fontFamily = BodoniFont,
+                            fontSize = 21.sp,
+                            lineHeight = 27.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+}
 
-        // زر Get Started السفلي
-        Button(
-            onClick = onGetStartedClick,
+// Lama - Equal-height cards and consistent text alignment
+@Composable
+private fun FeatureCard(
+    symbol: String,
+    title: String,
+    description: String,
+    bg: Color,
+    accent: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .height(180.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(bg)
+            .border(
+                width = 1.dp,
+                color = accent.copy(alpha = 0.22f),
+                shape = RoundedCornerShape(22.dp)
+            )
+            .padding(14.dp),
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+
+        // Icon aligned to top-left
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .padding(bottom = 8.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                .size(42.dp)
+                .background(Color.White, CircleShape),
+            contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "Get Started",
-                color = TextWhite,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
+                text = symbol,
+                color = accent,
+                fontSize = 24.sp,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center
             )
         }
+
+        // Reserved title area for consistent description alignment
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 42.dp),
+            contentAlignment = Alignment.TopStart
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.fillMaxWidth(),
+                fontFamily = BodoniFont,
+                fontSize = 17.sp,
+                lineHeight = 21.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontStyle = FontStyle.Italic,
+                color = Ink,
+                textAlign = TextAlign.Start
+            )
+        }
+
+        // Description starts at the same position in all cards
+        Text(
+            text = description,
+            modifier = Modifier.fillMaxWidth(),
+            fontFamily = JakartaFont,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Normal,
+            color = Muted,
+            textAlign = TextAlign.Start
+        )
+    }
+}
+
+// Lama - Decorative background
+@Composable
+private fun WelcomeBackground() {
+    Canvas(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        drawCircle(
+            color = LightTeal.copy(alpha = 0.7f),
+            radius = size.width * 0.52f,
+            center = Offset(
+                size.width * 1.05f,
+                -size.width * 0.12f
+            )
+        )
+
+        drawCircle(
+            color = PaleTeal,
+            radius = size.width * 0.44f,
+            center = Offset(
+                -size.width * 0.12f,
+                size.height * 0.94f
+            )
+        )
+
+        drawCircle(
+            color = Lavender.copy(alpha = 0.65f),
+            radius = size.width * 0.23f,
+            center = Offset(
+                -size.width * 0.08f,
+                size.height * 0.52f
+            )
+        )
+
+        drawCircle(
+            color = Teal.copy(alpha = 0.65f),
+            radius = 6.dp.toPx(),
+            center = Offset(
+                size.width * 0.08f,
+                size.height * 0.18f
+            )
+        )
+
+        drawCircle(
+            color = Pink.copy(alpha = 0.7f),
+            radius = 5.dp.toPx(),
+            center = Offset(
+                size.width * 0.91f,
+                size.height * 0.31f
+            )
+        )
+
+        drawCircle(
+            color = Teal.copy(alpha = 0.5f),
+            radius = 4.dp.toPx(),
+            center = Offset(
+                size.width * 0.88f,
+                size.height * 0.76f
+            )
+        )
+    }
+}
+
+// Lama - Minder shield and clock logo
+@Composable
+private fun MinderLogo() {
+    Canvas(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        val sx = size.width / 280f
+        val sy = size.height / 280f
+
+        fun point(x: Float, y: Float): Offset {
+            return Offset(x * sx, y * sy)
+        }
+
+        val shield = Path().apply {
+            moveTo(140f * sx, 52f * sy)
+            lineTo(206f * sx, 76f * sy)
+            lineTo(206f * sx, 140f * sy)
+
+            cubicTo(
+                206f * sx, 182f * sy,
+                176f * sx, 212f * sy,
+                140f * sx, 230f * sy
+            )
+
+            cubicTo(
+                104f * sx, 212f * sy,
+                74f * sx, 182f * sy,
+                74f * sx, 140f * sy
+            )
+
+            lineTo(74f * sx, 76f * sy)
+            close()
+        }
+
+        drawCircle(
+            color = Teal.copy(alpha = 0.15f),
+            radius = 106f * sx,
+            center = point(140f, 140f),
+            style = Stroke(width = 4f * sx)
+        )
+
+        drawPath(
+            path = shield,
+            brush = Brush.linearGradient(
+                colors = listOf(Purple, Teal),
+                start = point(80f, 55f),
+                end = point(205f, 225f)
+            )
+        )
+
+        drawCircle(
+            color = Color.White,
+            radius = 36f * sx,
+            center = point(140f, 140f)
+        )
+
+        drawCircle(
+            color = Purple.copy(alpha = 0.18f),
+            radius = 29f * sx,
+            center = point(140f, 140f)
+        )
+
+        drawCircle(
+            color = Color.White,
+            radius = 22f * sx,
+            center = point(140f, 140f)
+        )
+
+        drawLine(
+            color = Teal,
+            start = point(140f, 127f),
+            end = point(140f, 140f),
+            strokeWidth = 5f * sx,
+            cap = StrokeCap.Round
+        )
+
+        drawLine(
+            color = Teal,
+            start = point(140f, 140f),
+            end = point(149f, 148f),
+            strokeWidth = 5f * sx,
+            cap = StrokeCap.Round
+        )
+
+        drawCircle(
+            color = Pink,
+            radius = 6f * sx,
+            center = point(62f, 212f)
+        )
+
+        drawCircle(
+            color = Teal,
+            radius = 5f * sx,
+            center = point(232f, 66f)
+        )
+
+        drawCircle(
+            color = Color(0xFFE9DDF9),
+            radius = 4f * sx,
+            center = point(40f, 108f)
+        )
     }
 }

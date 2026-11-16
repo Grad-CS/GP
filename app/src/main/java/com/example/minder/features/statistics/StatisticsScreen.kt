@@ -1,4 +1,3 @@
-
 package com.example.minder.features.statistics
 
 import androidx.compose.foundation.Canvas
@@ -8,37 +7,54 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.minder.domain.model.*
+import com.example.minder.ui.theme.JakartaFont
+import com.example.minder.ui.theme.ManropeFont
+import com.example.minder.ui.theme.OutfitFont
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val StatsBackground = Color(0xFF001B3D)
-private val StatsCard = Color(0xFF082247)
-private val StatsInner = Color(0xFF031630)
-private val StatsAccent = Color(0xFF2EC4B6)
-private val StatsText = Color.White
-private val StatsSecondary = Color(0xFF8A9FB8)
-private val StatsBorder = Color(0xFF143866)
-private val StatsBlue = Color(0xFF2F8FFF)
-private val StatsOrange = Color(0xFFFF8C42)
+// Lama - Statistics styling aligned with Minder's HTML/CSS dashboard.
+// This file changes UI only. All six real statistics still come from StatisticsViewModel.
+private val StatsBackground = Color.White
+private val StatsText = Color(0xFF302342)
+private val StatsSecondary = Color(0xFF655B76)
+private val StatsTeal = Color(0xFF38C9C5)
+private val StatsDarkTeal = Color(0xFF1B837F)
+private val StatsPurple = Color(0xFF9061D8)
+private val StatsPink = Color(0xFFF3A1C8)
+private val StatsBlue = Color(0xFF78B8F5)
+private val StatsBorder = Color(0xFFD3F1EE)
+private val StatsLightTeal = Color(0xFFE5F8F6)
+private val StatsPaleTeal = Color(0xFFF1FCFB)
+private val StatsLavender = Color(0xFFF5EEFC)
+private val StatsLavenderBorder = Color(0xFFE9DDF9)
+private val StatsSoftPink = Color(0xFFFCECF5)
+private val StatsPinkBorder = Color(0xFFF8D6E8)
+private val StatsSoftBlue = Color(0xFFEDF6FE)
+private val StatsBlueBorder = Color(0xFFD5E8FB)
+private val StatsError = Color(0xFFA8456F)
 
 @Composable
 fun StatisticsScreen(
-    viewModel: StatisticsViewModel,
-    onBackClick: () -> Unit = {}
+    viewModel: StatisticsViewModel
 ) {
     val dailyState by viewModel.dailyUsageState.collectAsState()
     val weeklyState by viewModel.weeklyUsageState.collectAsState()
@@ -47,344 +63,350 @@ fun StatisticsScreen(
     val averageState by viewModel.averageSessionDurationState.collectAsState()
     val peakState by viewModel.peakUsageTimesState.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(StatsBackground)
-            .statusBarsPadding()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBackClick) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    tint = StatsText
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Column {
-                Text(
-                    text = "Statistics",
-                    color = StatsText,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Understand your digital habits",
-                    color = StatsSecondary,
-                    fontSize = 13.sp
-                )
-            }
-        }
-
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .background(StatsBackground)
+                .statusBarsPadding()
         ) {
-            StatsSectionTitle("Daily Usage")
-
-            StatsDataCard(
-                title = "Total screen time today",
-                state = dailyState
-            ) { data ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 16.dp)
+            ) {
                 Text(
-                    text = formatDuration(data.totalUsageSeconds.toLong()),
-                    color = StatsAccent,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold
+                    "Statistics",
+                    fontFamily = OutfitFont,
+                    fontSize = 27.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = StatsText
                 )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (data.apps.isEmpty()) {
-                    EmptyStatsMessage("No app usage recorded today")
-                } else {
-                    data.apps
-                        .sortedByDescending { it.totalUsageSeconds }
-                        .forEach { app ->
-                            UsageProgressRow(
-                                name = app.appName,
-                                seconds = app.totalUsageSeconds.toLong(),
-                                maximum = data.apps.maxOfOrNull {
-                                    it.totalUsageSeconds
-                                }?.toLong() ?: 1L
-                            )
-                        }
-                }
+                Text(
+                    "Understand your screen time and discover your digital habits.",
+                    fontFamily = JakartaFont,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    color = StatsSecondary
+                )
             }
 
-            StatsSectionTitle("Weekly Usage")
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Spacer(Modifier.height(5.dp))
 
-            StatsDataCard(
-                title = "This week's screen time",
-                state = weeklyState
-            ) { data ->
-                Text(
-                    text = formatDuration(data.totalUsageSeconds.toLong()),
-                    color = StatsAccent,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                StatsDataCard(
+                    title = "Daily Usage",
+                    state = dailyState,
+                    background = StatsLavender,
+                    borderColor = StatsLavenderBorder
+                ) { data ->
+                    StatValue(formatDuration(data.totalUsageSeconds.toLong()), "Total today")
+                    Spacer(Modifier.height(14.dp))
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text("Daily average", color = StatsSecondary, fontSize = 12.sp)
+                    if (data.apps.isEmpty()) {
+                        EmptyStatsMessage("No app usage recorded today")
+                    } else {
                         Text(
-                            formatDuration(data.averageDailyUsageSeconds.toLong()),
-                            color = StatsText,
-                            fontWeight = FontWeight.SemiBold
+                            "Usage by app",
+                            fontFamily = OutfitFont,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = StatsText
                         )
-                    }
-
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Week period", color = StatsSecondary, fontSize = 12.sp)
-                        Text(
-                            "${formatDate(data.weekStartDate)} - ${formatDate(data.weekEndDate)}",
-                            color = StatsText,
-                            fontSize = 12.sp
-                        )
+                        Spacer(Modifier.height(7.dp))
+                        val maximum = data.apps.maxOfOrNull {
+                            it.totalUsageSeconds
+                        }?.toLong() ?: 1L
+                        data.apps.sortedByDescending { it.totalUsageSeconds }
+                            .forEach { app ->
+                                UsageProgressRow(
+                                    name = app.appName,
+                                    seconds = app.totalUsageSeconds.toLong(),
+                                    maximum = maximum,
+                                    progressColor = StatsPurple
+                                )
+                            }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "App usage",
-                    color = StatsText,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                if (data.apps.isEmpty()) {
-                    EmptyStatsMessage("No weekly app usage available")
-                } else {
-                    data.apps
-                        .sortedByDescending { it.totalUsageSeconds }
-                        .forEach { app ->
-                            UsageProgressRow(
-                                name = app.appName,
-                                seconds = app.totalUsageSeconds.toLong(),
-                                maximum = data.apps.maxOfOrNull {
-                                    it.totalUsageSeconds
-                                }?.toLong() ?: 1L
-                            )
-                        }
-                }
-            }
-
-            StatsSectionTitle("Usage Comparison")
-
-            StatsDataCard(
-                title = "Current week vs previous week",
-                state = comparisonState
-            ) { data ->
-                val trendColor = when (data.trend) {
-                    UsageTrend.DECREASED -> StatsAccent
-                    UsageTrend.INCREASED -> StatsOrange
-                    UsageTrend.UNCHANGED -> StatsSecondary
-                }
-
-                val trendLabel = when (data.trend) {
-                    UsageTrend.DECREASED -> "Usage decreased"
-                    UsageTrend.INCREASED -> "Usage increased"
-                    UsageTrend.UNCHANGED -> "No change"
-                }
-
-                Text(
-                    text = trendLabel,
-                    color = trendColor,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                ComparisonValue(
-                    label = "This week",
-                    value = formatDuration(data.currentWeekUsageSeconds.toLong())
-                )
-
-                ComparisonValue(
-                    label = "Previous week",
-                    value = formatDuration(data.previousWeekUsageSeconds.toLong())
-                )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 10.dp),
-                    color = StatsBorder
-                )
-
-                Text(
-                    text = "${if (data.usageChangeSeconds > 0) "+" else ""}" +
-                            formatDuration(data.usageChangeSeconds.toLong()) +
-                            " (${String.format(Locale.US, "%.1f", data.usageChangePercentage)}%)",
-                    color = trendColor,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            StatsSectionTitle("Saved Time")
-
-            StatsDataCard(
-                title = "Your time saved",
-                state = savedTimeState
-            ) { data ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    SavedTimeValue(
-                        label = "Today",
-                        seconds = data.todaySavedTimeSeconds.toLong()
-                    )
-                    SavedTimeValue(
-                        label = "Total",
-                        seconds = data.totalSavedTimeSeconds.toLong()
-                    )
-                }
-            }
-
-            StatsSectionTitle("Average Session Duration")
-
-            StatsDataCard(
-                title = "Your average app session",
-                state = averageState
-            ) { data ->
-                Text(
-                    text = formatDuration(data.averageDurationSeconds.toLong()),
-                    color = StatsAccent,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = "${data.totalSessions} sessions recorded",
-                    color = StatsSecondary,
-                    fontSize = 13.sp
-                )
-            }
-
-            StatsSectionTitle("Peak Usage Times")
-
-            StatsDataCard(
-                title = "Hourly usage over the last 7 days",
-                state = peakState
-            ) { data ->
-                if (data.peakHour == null) {
-                    EmptyStatsMessage("No usage sessions recorded")
-                } else {
-                    Text(
-                        text = "Peak hour: ${formatHour(data.peakHour)}",
-                        color = StatsAccent,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = formatDuration(data.peakUsageSeconds),
-                        color = StatsSecondary,
-                        fontSize = 13.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    HourlyUsageChart(data.hourlyStats)
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
+                StatsDataCard(
+                    title = "Weekly Usage",
+                    state = weeklyState,
+                    background = StatsPaleTeal
+                ) { data ->
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.Top
                     ) {
-                        listOf("12 AM", "6 AM", "12 PM", "6 PM", "12 AM").forEach {
-                            Text(
-                                text = it,
-                                color = StatsSecondary,
-                                fontSize = 10.sp
-                            )
+                        StatValue(
+                            value = formatDuration(data.totalUsageSeconds.toLong()),
+                            label = "Weekly total",
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatValue(
+                            value = formatDuration(data.averageDailyUsageSeconds.toLong()),
+                            label = "Daily average",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "${formatDate(data.weekStartDate)} – ${formatDate(data.weekEndDate)}",
+                        fontFamily = JakartaFont,
+                        fontSize = 12.sp,
+                        color = StatsSecondary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    if (data.apps.isEmpty()) {
+                        EmptyStatsMessage("No weekly app usage available")
+                    } else {
+                        Text(
+                            "App usage this week",
+                            fontFamily = OutfitFont,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = StatsText
+                        )
+                        Spacer(Modifier.height(7.dp))
+                        val maximum = data.apps.maxOfOrNull {
+                            it.totalUsageSeconds
+                        }?.toLong() ?: 1L
+                        data.apps.sortedByDescending { it.totalUsageSeconds }
+                            .forEach { app ->
+                                UsageProgressRow(
+                                    name = app.appName,
+                                    seconds = app.totalUsageSeconds.toLong(),
+                                    maximum = maximum,
+                                    progressColor = StatsTeal
+                                )
+                            }
+                    }
+                }
+
+                StatsDataCard(
+                    title = "Usage Comparison",
+                    state = comparisonState,
+                    background = StatsSoftBlue,
+                    borderColor = StatsBlueBorder
+                ) { data ->
+                    val trendColor = when (data.trend) {
+                        UsageTrend.DECREASED -> StatsDarkTeal
+                        UsageTrend.INCREASED -> StatsError
+                        UsageTrend.UNCHANGED -> StatsSecondary
+                    }
+                    val trendLabel = when (data.trend) {
+                        UsageTrend.DECREASED -> "Usage decreased"
+                        UsageTrend.INCREASED -> "Usage increased"
+                        UsageTrend.UNCHANGED -> "No change"
+                    }
+
+                    Text(
+                        trendLabel,
+                        fontFamily = OutfitFont,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = trendColor
+                    )
+                    Spacer(Modifier.height(10.dp))
+
+                    val current = data.currentWeekUsageSeconds.toLong()
+                    val previous = data.previousWeekUsageSeconds.toLong()
+                    val maximum = maxOf(current, previous, 1L)
+
+                    ComparisonBar("This week", current, maximum, StatsTeal)
+                    Spacer(Modifier.height(10.dp))
+                    ComparisonBar("Previous week", previous, maximum, StatsBlue)
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider(color = StatsBlueBorder)
+                    Spacer(Modifier.height(10.dp))
+
+                    val delta = data.usageChangeSeconds.toLong()
+                    val sign = if (delta > 0) "+" else if (delta < 0) "−" else ""
+                    Text(
+                        "$sign${formatDuration(kotlin.math.abs(delta))} " +
+                                "(${String.format(Locale.US, "%+.1f", data.usageChangePercentage)}%)",
+                        fontFamily = ManropeFont,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp,
+                        color = trendColor
+                    )
+                    Text(
+                        "Compared with the previous week",
+                        fontFamily = JakartaFont,
+                        fontSize = 12.sp,
+                        color = StatsSecondary
+                    )
+                }
+
+                StatsDataCard(
+                    title = "Saved Time",
+                    state = savedTimeState,
+                    background = StatsSoftPink,
+                    borderColor = StatsPinkBorder
+                ) { data ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        StatValue(
+                            value = formatDuration(data.todaySavedTimeSeconds.toLong()),
+                            label = "Saved today",
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatValue(
+                            value = formatDuration(data.totalSavedTimeSeconds.toLong()),
+                            label = "Total saved",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                StatsDataCard(
+                    title = "Average Session Duration",
+                    state = averageState,
+                    background = StatsSoftBlue,
+                    borderColor = StatsBlueBorder
+                ) { data ->
+                    StatValue(
+                        value = formatDuration(data.averageDurationSeconds.toLong()),
+                        label = "Average session"
+                    )
+                    Spacer(Modifier.height(11.dp))
+                    Text(
+                        "${data.totalSessions} sessions recorded",
+                        fontFamily = JakartaFont,
+                        fontSize = 13.sp,
+                        color = StatsSecondary
+                    )
+                }
+
+                StatsDataCard(
+                    title = "Peak Usage Times",
+                    state = peakState,
+                    background = StatsPaleTeal
+                ) { data ->
+                    if (data.peakHour == null) {
+                        EmptyStatsMessage("No usage sessions recorded")
+                    } else {
+                        StatValue(
+                            value = formatHour(data.peakHour),
+                            label = "Peak hour"
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            formatDuration(data.peakUsageSeconds) + " used during peak hour",
+                            fontFamily = JakartaFont,
+                            fontSize = 13.sp,
+                            color = StatsSecondary
+                        )
+                        Spacer(Modifier.height(18.dp))
+
+                        HourlyUsageChart(data.hourlyStats)
+                        Spacer(Modifier.height(9.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            listOf("12 AM", "6 AM", "12 PM", "6 PM", "12 AM")
+                                .forEach { label ->
+                                    Text(
+                                        label,
+                                        fontFamily = JakartaFont,
+                                        color = StatsSecondary,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            ChartLegend("Peak", StatsTeal)
+                            ChartLegend("Other hours", StatsPurple)
                         }
                     }
                 }
+
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
 }
 
 @Composable
-private fun StatsSectionTitle(title: String) {
-    Text(
-        text = title,
-        color = StatsText,
-        fontSize = 18.sp,
-        fontWeight = FontWeight.Bold
-    )
-}
-
-@Composable
 private fun <T> StatsDataCard(
     title: String,
     state: StatisticsDataState<T>,
-    content: @Composable (T) -> Unit
+    background: Color,
+    borderColor: Color = StatsBorder,
+    content: @Composable ColumnScope.(T) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(StatsCard, RoundedCornerShape(20.dp))
-            .border(1.dp, StatsBorder, RoundedCornerShape(20.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .background(background)
             .padding(18.dp)
     ) {
         Text(
-            text = title,
-            color = StatsSecondary,
-            fontSize = 13.sp
+            title,
+            fontFamily = OutfitFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp,
+            color = StatsText
         )
-
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(Modifier.height(15.dp))
 
         when (state) {
-            is StatisticsDataState.Loading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(70.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = StatsAccent,
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 3.dp
-                    )
-                }
+            is StatisticsDataState.Loading -> Box(
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = StatsTeal,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(28.dp)
+                )
             }
 
             is StatisticsDataState.Success -> content(state.data)
 
-            is StatisticsDataState.Error -> {
-                Text(
-                    text = state.message,
-                    color = StatsOrange,
-                    fontSize = 13.sp
-                )
-            }
+            is StatisticsDataState.Error -> Text(
+                state.message,
+                fontFamily = JakartaFont,
+                fontSize = 13.sp,
+                color = StatsError
+            )
         }
+    }
+}
+
+@Composable
+private fun StatValue(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier) {
+        Text(
+            value,
+            fontFamily = ManropeFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 25.sp,
+            color = StatsText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            label,
+            fontFamily = JakartaFont,
+            fontSize = 12.sp,
+            color = StatsSecondary
+        )
     }
 }
 
@@ -392,104 +414,129 @@ private fun <T> StatsDataCard(
 private fun UsageProgressRow(
     name: String,
     seconds: Long,
-    maximum: Long
+    maximum: Long,
+    progressColor: Color
 ) {
-    Column(modifier = Modifier.padding(vertical = 7.dp)) {
+    Column(modifier = Modifier.padding(vertical = 6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = name,
+                name,
+                fontFamily = JakartaFont,
                 color = StatsText,
                 fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            Spacer(Modifier.width(8.dp))
             Text(
-                text = formatDuration(seconds),
+                formatDuration(seconds),
+                fontFamily = ManropeFont,
+                fontWeight = FontWeight.SemiBold,
                 color = StatsSecondary,
                 fontSize = 12.sp
             )
         }
-
-        Spacer(modifier = Modifier.height(7.dp))
-
+        Spacer(Modifier.height(6.dp))
         LinearProgressIndicator(
             progress = {
-                if (maximum > 0) {
-                    (seconds.toFloat() / maximum.toFloat()).coerceIn(0f, 1f)
-                } else {
-                    0f
-                }
+                if (maximum > 0) (seconds.toFloat() / maximum.toFloat()).coerceIn(0f, 1f)
+                else 0f
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(6.dp),
-            color = StatsBlue,
-            trackColor = StatsInner,
+                .height(9.dp)
+                .clip(RoundedCornerShape(9.dp)),
+            color = progressColor,
+            trackColor = StatsLightTeal,
             strokeCap = StrokeCap.Round
         )
     }
 }
 
 @Composable
-private fun ComparisonValue(
-    label: String,
-    value: String
+private fun ComparisonBar(
+    name: String,
+    seconds: Long,
+    maximum: Long,
+    color: Color
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 5.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(label, color = StatsSecondary, fontSize = 13.sp)
         Text(
-            value,
-            color = StatsText,
+            name,
+            fontFamily = OutfitFont,
+            fontWeight = FontWeight.SemiBold,
             fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
+            color = StatsText
         )
-    }
-}
-
-@Composable
-private fun SavedTimeValue(
-    label: String,
-    seconds: Long
-) {
-    Column {
-        Text(label, color = StatsSecondary, fontSize = 13.sp)
-        Spacer(modifier = Modifier.height(6.dp))
         Text(
             formatDuration(seconds),
-            color = StatsAccent,
-            fontSize = 21.sp,
-            fontWeight = FontWeight.Bold
+            fontFamily = ManropeFont,
+            fontSize = 13.sp,
+            color = StatsText
         )
     }
+    Spacer(Modifier.height(6.dp))
+    LinearProgressIndicator(
+        progress = { (seconds.toFloat() / maximum.toFloat()).coerceIn(0f, 1f) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(12.dp)
+            .clip(RoundedCornerShape(7.dp)),
+        color = color,
+        trackColor = Color.White,
+        strokeCap = StrokeCap.Round
+    )
 }
 
 @Composable
 private fun EmptyStatsMessage(message: String) {
     Text(
-        text = message,
+        message,
+        fontFamily = JakartaFont,
+        fontSize = 13.sp,
         color = StatsSecondary,
-        fontSize = 13.sp
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.65f))
+            .padding(15.dp)
     )
 }
 
 @Composable
-private fun HourlyUsageChart(
-    hourlyStats: List<HourlyUsageStats>
-) {
+private fun ChartLegend(label: String, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.size(10.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(color)
+        )
+        Spacer(Modifier.width(5.dp))
+        Text(
+            label,
+            fontFamily = JakartaFont,
+            fontSize = 11.sp,
+            color = StatsSecondary
+        )
+    }
+}
+
+@Composable
+private fun HourlyUsageChart(hourlyStats: List<HourlyUsageStats>) {
     val values = remember(hourlyStats) {
         (0..23).map { hour ->
             hourlyStats.firstOrNull { it.hourOfDay == hour }
                 ?.totalUsageSeconds ?: 0L
         }
     }
-
     val maximum = values.maxOrNull()?.coerceAtLeast(1L) ?: 1L
 
     Canvas(
@@ -497,57 +544,44 @@ private fun HourlyUsageChart(
             .fillMaxWidth()
             .height(130.dp)
     ) {
-        val barCount = 24
-        val spacing = 5.dp.toPx()
-        val barWidth = (size.width - spacing * (barCount - 1)) / barCount
+        val count = 24
+        val spacing = 3.dp.toPx()
+        val width = ((size.width - spacing * (count - 1)) / count)
+            .coerceAtLeast(0f)
 
         values.forEachIndexed { index, value ->
-            val barHeight = (value.toFloat() / maximum.toFloat()) *
-                    size.height
-
-            val left = index * (barWidth + spacing)
-
-            drawRoundRect(
-                color = if (value == maximum) StatsAccent else StatsBlue,
-                topLeft = androidx.compose.ui.geometry.Offset(
-                    left,
-                    size.height - barHeight
-                ),
-                size = androidx.compose.ui.geometry.Size(
-                    barWidth,
-                    barHeight.coerceAtLeast(3.dp.toPx())
-                ),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                    4.dp.toPx(),
-                    4.dp.toPx()
+            if (value > 0L) {
+                val barHeight = (value.toFloat() / maximum.toFloat() * size.height)
+                    .coerceAtLeast(3.dp.toPx())
+                drawRoundRect(
+                    color = if (value == maximum) StatsTeal else StatsPurple,
+                    topLeft = Offset(index * (width + spacing), size.height - barHeight),
+                    size = Size(width, barHeight),
+                    cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                 )
-            )
+            }
         }
     }
 }
 
 private fun formatDuration(totalSeconds: Long): String {
-    val safeSeconds = totalSeconds.coerceAtLeast(0)
-    val hours = safeSeconds / 3600
-    val minutes = (safeSeconds % 3600) / 60
-
+    val safe = totalSeconds.coerceAtLeast(0)
+    val hours = safe / 3600
+    val minutes = (safe % 3600) / 60
     return when {
         hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
         hours > 0 -> "${hours}h"
-        else -> "${minutes}m"
+        minutes > 0 -> "${minutes}m"
+        safe > 0 -> "${safe}s"
+        else -> "0m"
     }
 }
 
-private fun formatDate(timestamp: Long): String {
-    return SimpleDateFormat("MMM d", Locale.ENGLISH).format(Date(timestamp))
-}
+private fun formatDate(timestamp: Long): String =
+    SimpleDateFormat("MMM d", Locale.ENGLISH).format(Date(timestamp))
 
 private fun formatHour(hour: Int): String {
-    val normalizedHour = hour.coerceIn(0, 23)
-    val period = if (normalizedHour < 12) "AM" else "PM"
-    val displayHour = when (val value = normalizedHour % 12) {
-        0 -> 12
-        else -> value
-    }
-    return "$displayHour $period"
+    val normalized = hour.coerceIn(0, 23)
+    val hour12 = if (normalized % 12 == 0) 12 else normalized % 12
+    return "$hour12 ${if (normalized < 12) "AM" else "PM"}"
 }

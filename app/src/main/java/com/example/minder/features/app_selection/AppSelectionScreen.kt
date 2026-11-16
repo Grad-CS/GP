@@ -1,587 +1,853 @@
+
 package com.example.minder.features.app_selection
 
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.minder.ui.theme.PacificoFont
+import com.example.minder.ui.theme.OutfitFont
+import com.example.minder.ui.theme.JakartaFont
+import com.example.minder.ui.theme.ManropeFont
+import com.example.minder.ui.theme.BodoniFont
 import kotlinx.coroutines.launch
 
-private val PrimaryDark = Color(0xFF001B3D)
-private val PrimaryBlue = Color(0xFF2F8FFF)
-private val CardBackground = Color(0xFF082247)
-private val BoxBackground = Color(0xFF031630)
-private val TextPrimary = Color(0xFFFFFFFF)
-private val TextSecondary = Color(0xFF8A9FB8)
-private val BorderColor = Color(0xFF143866)
-private val ErrorRed = Color(0xFFEF5350)
+// Lama - Minder design system
+private val Purple = Color(0xFF9061D8)
+private val Teal = Color(0xFF38C9C5)
+private val DarkTeal = Color(0xFF0E8582)
+private val Pink = Color(0xFFF3A1C8)
+private val Ink = Color(0xFF302342)
+private val Muted = Color(0xFF655B76)
+private val LightTeal = Color(0xFFE5F8F6)
+private val LightPurple = Color(0xFFF5EEFC)
+private val PaleTeal = Color(0xFFF1FCFB)
+private val ErrorRed = Color(0xFFB3346B)
 
 data class SelectableApp(
     val id: String,
     val name: String,
     val packageName: String,
     val isSelected: Boolean = false,
-    val dailyLimitMinutes: Int? = null // Null يعني أنه لم يحدد وقت بعد
+    val dailyLimitMinutes: Int? = null
 ) {
     fun getFormattedLimit(): String {
+        val total = dailyLimitMinutes ?: return "Set limit"
+        val hours = total / 60
+        val minutes = total % 60
+
         return when {
-            dailyLimitMinutes == null -> "Set limit"
-            dailyLimitMinutes < 60 -> "${dailyLimitMinutes}m/day"
-            dailyLimitMinutes % 60 == 0 -> "${dailyLimitMinutes / 60}h/day"
-            else -> "${dailyLimitMinutes / 60}h ${dailyLimitMinutes % 60}m/day"
+            hours == 0 -> "$minutes min/day"
+            minutes == 0 -> "$hours h/day"
+            else -> "$hours h $minutes min/day"
         }
     }
 }
 
-// جلب جميع التطبيقات المنزلة في الجهاز
-fun getInstalledSystemApps(context: Context): List<SelectableApp> {
+// Keep real Android installed-app discovery.
+fun getInstalledSystemApps(
+    context: Context
+): List<SelectableApp> {
     val pm = context.packageManager
-    val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+
+    val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
         addCategory(Intent.CATEGORY_LAUNCHER)
     }
 
-    val resolveInfos = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-        pm.queryIntentActivities(mainIntent, PackageManager.ResolveInfoFlags.of(0L))
-    } else {
-        @Suppress("DEPRECATION")
-        pm.queryIntentActivities(mainIntent, 0)
-    }
+    val resolveInfos =
+        if (
+            android.os.Build.VERSION.SDK_INT >=
+            android.os.Build.VERSION_CODES.TIRAMISU
+        ) {
+            pm.queryIntentActivities(
+                launcherIntent,
+                PackageManager.ResolveInfoFlags.of(0L)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            pm.queryIntentActivities(launcherIntent, 0)
+        }
 
-    val apps = mutableListOf<SelectableApp>()
-
-    for (info in resolveInfos) {
+    return resolveInfos.mapNotNull { info ->
         val packageName = info.activityInfo.packageName
-        if (packageName != context.packageName) {
-            val appName = info.loadLabel(pm).toString()
-            apps.add(
-                SelectableApp(
-                    id = packageName,
-                    name = appName,
-                    packageName = packageName,
-                    isSelected = false,
-                    dailyLimitMinutes = null
-                )
+
+        if (packageName == context.packageName) {
+            null
+        } else {
+            SelectableApp(
+                id = packageName,
+                name = info.loadLabel(pm).toString(),
+                packageName = packageName
             )
         }
     }
-
-    return apps.distinctBy { it.packageName }.sortedBy { it.name }
+        .distinctBy { it.packageName }
+        .sortedBy { it.name.lowercase() }
 }
 
 @Composable
 fun AppSelectionScreen(
-    //Ragahd-: Receive previously saved apps when editing the selection
     initialSelectedApps: List<SelectableApp> = emptyList(),
     onBackClick: () -> Unit = {},
     onDoneClick: (List<SelectableApp>) -> Unit = {}
 ) {
     val context = LocalContext.current
-    var allApps by remember { mutableStateOf<List<SelectableApp>>(emptyList()) }
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedAppForLimit by remember { mutableStateOf<SelectableApp?>(null) }
-
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-   // LaunchedEffect(Unit) {
-   //     allApps = getInstalledSystemApps(context)
-    //}
-    //Ragahd-: Load installed apps and restore their saved selection and daily limits
-    LaunchedEffect(initialSelectedApps) {
+    var allApps by remember {
+        mutableStateOf<List<SelectableApp>>(emptyList())
+    }
+
+    var searchQuery by remember {
+        mutableStateOf("")
+    }
+
+    var selectedFilter by remember {
+        mutableStateOf("Suggested")
+    }
+
+    val suggestions = listOf(
+        "TikTok",
+        "Instagram",
+        "YouTube",
+        "Snapchat"
+    )
+
+    // Restore selected apps and their saved daily limits.
+    LaunchedEffect(context, initialSelectedApps) {
         val installedApps = getInstalledSystemApps(context)
 
-        allApps = installedApps.map { installedApp ->
-            val savedApp = initialSelectedApps.firstOrNull {
-                it.packageName == installedApp.packageName
+        allApps = installedApps.map { app ->
+            val saved = initialSelectedApps.firstOrNull {
+                it.packageName == app.packageName
             }
 
-            if (savedApp != null) {
-                installedApp.copy(
+            if (saved != null) {
+                app.copy(
                     isSelected = true,
-                    dailyLimitMinutes = savedApp.dailyLimitMinutes
+                    dailyLimitMinutes = saved.dailyLimitMinutes
                 )
             } else {
-                installedApp
+                app
             }
         }
     }
 
-    val filteredApps = remember(allApps, searchQuery) {
-        if (searchQuery.isBlank()) allApps
-        else allApps.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    val selectedCount = allApps.count { it.isSelected }
+
+    val filteredApps = allApps.filter { app ->
+        val matchesSearch = app.name.contains(
+            searchQuery.trim(),
+            ignoreCase = true
+        )
+
+        val matchesFilter = when (selectedFilter) {
+            "Selected" -> app.isSelected
+
+            "Social Media" -> isSocialMediaApp(app)
+
+            "Suggested" -> {
+                isSuggestedApp(app)
+            }
+
+            else -> true
+        }
+
+        matchesSearch && matchesFilter
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = PrimaryDark
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 20.dp)
-        ) {
+    fun updateApp(
+        packageName: String,
+        transform: (SelectableApp) -> SelectableApp
+    ) {
+        allApps = allApps.map { app ->
+            if (app.packageName == packageName) {
+                transform(app)
+            } else {
+                app
+            }
+        }
+    }
+
+    CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Ltr
+    ) {
+        Scaffold(
+            containerColor = Color.White,
+            snackbarHost = {
+                SnackbarHost(snackbar)
+            },
+            bottomBar = {
+                Surface(
+                    color = Color.White,
+                    shadowElevation = 8.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .navigationBarsPadding()
+                            .padding(
+                                horizontal = 20.dp,
+                                vertical = 12.dp
+                            )
+                    ) {
+                        Text(
+                            text = "$selectedCount apps selected",
+                            fontFamily = OutfitFont,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Muted
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
+                        Button(
+                            onClick = {
+                                val selected = allApps.filter {
+                                    it.isSelected
+                                }
+
+                                when {
+                                    selected.isEmpty() -> {
+                                        scope.launch {
+                                            snackbar.showSnackbar(
+                                                "Please select at least one app."
+                                            )
+                                        }
+                                    }
+
+                                    selected.any {
+                                        it.dailyLimitMinutes == null ||
+                                                it.dailyLimitMinutes !in 1..1440
+                                    } -> {
+                                        scope.launch {
+                                            snackbar.showSnackbar(
+                                                "Set a valid daily limit for every selected app."
+                                            )
+                                        }
+                                    }
+
+                                    else -> {
+                                        onDoneClick(selected)
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            shape = RoundedCornerShape(50),
+                            contentPadding = PaddingValues(0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = DarkTeal
+                            )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                DarkTeal,
+                                                Teal,
+                                                Purple
+                                            )
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Continue",
+                                    fontFamily = BodoniFont,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 18.sp,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        ) { padding ->
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(padding)
                     .statusBarsPadding()
-                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp)
             ) {
-                Spacer(modifier = Modifier.height(16.dp))
-
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBackClick) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = TextPrimary
+                            tint = Ink
                         )
                     }
 
+                    Spacer(Modifier.weight(1f))
+
                     Text(
-                        text = "4/5",
-                        color = TextSecondary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
+                        text = "Minder",
+                        fontFamily = PacificoFont,
+                        fontSize = 31.sp,
+                        color = Purple
                     )
+
+                    Spacer(Modifier.weight(1f))
+
+                    Spacer(Modifier.width(48.dp))
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(Modifier.height(14.dp))
 
                 Text(
-                    text = "Select Apps",
-                    color = TextPrimary,
-                    fontSize = 28.sp,
+                    text = "Apps & Daily Limits",
+                    fontFamily = OutfitFont,
                     fontWeight = FontWeight.Bold,
-                    lineHeight = 34.sp
+                    fontSize = 29.sp,
+                    lineHeight = 35.sp,
+                    color = Ink
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = "Choose apps and set a daily limit for each selected app.",
-                    color = TextSecondary,
-                    fontSize = 14.sp
+                    text = "Choose the apps you want to restrict " +
+                            "and set a daily usage limit for each one.",
+                    fontFamily = JakartaFont,
+                    fontSize = 14.sp,
+                    lineHeight = 21.sp,
+                    color = Muted
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(18.dp))
 
                 OutlinedTextField(
                     value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search apps...", color = TextSecondary) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary) },
+                    onValueChange = {
+                        searchQuery = it
+                        if (it.isNotBlank()) {
+                            selectedFilter = "All Apps"
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    placeholder = {
+                        Text(
+                            "Search for an app...",
+                            fontFamily = JakartaFont
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null,
+                            tint = Teal
+                        )
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(18.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryBlue,
-                        unfocusedBorderColor = BorderColor,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        cursorColor = PrimaryBlue
-                    ),
-                    singleLine = true
+                        focusedBorderColor = Teal,
+                        unfocusedBorderColor = LightTeal,
+                        focusedContainerColor = PaleTeal,
+                        unfocusedContainerColor = PaleTeal,
+                        focusedTextColor = Ink,
+                        unfocusedTextColor = Ink,
+                        cursorColor = Purple
+                    )
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(10.dp))
 
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    shape = RoundedCornerShape(16.dp),
-                    color = CardBackground,
-                    border = BorderStroke(1.dp, BorderColor)
+                Text(
+                    text = "Quick search",
+                    fontFamily = OutfitFont,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Muted
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                // Quick search suggestions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(filteredApps, key = { it.id }) { app ->
-                            val appIcon = remember(app.packageName) { getAppIconBitmap(context, app.packageName) }
-
-                            AppRowItem(
-                                appName = app.name,
-                                appIcon = appIcon,
-                                isSelected = app.isSelected,
-                                formattedLimit = app.getFormattedLimit(),
-                                hasLimitSet = app.dailyLimitMinutes != null,
-                                onCheckedChange = { checked ->
-                                    allApps = allApps.map {
-                                        if (it.id == app.id) {
-                                            if (checked && it.dailyLimitMinutes == null) {
-                                                selectedAppForLimit = it
-                                            }
-                                            it.copy(isSelected = checked, dailyLimitMinutes = if (!checked) null else it.dailyLimitMinutes)
-                                        } else it
-                                    }
+                    suggestions.forEach { suggestion ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .background(
+                                    LightPurple,
+                                    RoundedCornerShape(50)
+                                )
+                                .clickable {
+                                    searchQuery = suggestion
+                                    selectedFilter = "All Apps"
                                 },
-                                onLimitClick = {
-                                    selectedAppForLimit = app
-                                }
-                            )
-
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = 68.dp),
-                                thickness = 1.dp,
-                                color = BorderColor
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = suggestion,
+                                fontFamily = OutfitFont,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Purple,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
-                Button(
-                    onClick = {
-                        val selectedApps = allApps.filter { it.isSelected }
-                        val hasUnsetLimit = selectedApps.any { it.dailyLimitMinutes == null }
-
-                        if (hasUnsetLimit) {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "Please set a daily limit for all selected apps before proceeding."
-                                )
-                            }
-                        } else if (selectedApps.isEmpty()) {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    message = "Please select at least one app."
-                                )
-                            }
-                        } else {
-                            onDoneClick(selectedApps)
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(27.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                // Filters
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    Text(
-                        text = "Done",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    listOf(
+                        "Suggested",
+                        "Social Media",
+                        "All Apps",
+                        "Selected"
+                    ).forEach { filter ->
+                        val active = selectedFilter == filter
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .background(
+                                    if (active) Teal else PaleTeal,
+                                    RoundedCornerShape(50)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (active) Teal else LightTeal,
+                                    RoundedCornerShape(50)
+                                )
+                                .clickable {
+                                    selectedFilter = filter
+                                    searchQuery = ""
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = filter,
+                                fontFamily = OutfitFont,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (active) {
+                                    Color.White
+                                } else {
+                                    DarkTeal
+                                },
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(Modifier.height(14.dp))
+
+                // Apps and their limits on the same page.
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    items(
+                        items = filteredApps,
+                        key = { it.packageName }
+                    ) { app ->
+
+                        val icon = remember(app.packageName) {
+                            getAppIconBitmap(
+                                context,
+                                app.packageName
+                            )
+                        }
+
+                        AppLimitCard(
+                            app = app,
+                            appIcon = icon,
+                            onSelectedChange = { checked ->
+                                updateApp(app.packageName) {
+                                    it.copy(
+                                        isSelected = checked,
+                                        dailyLimitMinutes =
+                                            if (checked) {
+                                                it.dailyLimitMinutes
+                                            } else {
+                                                null
+                                            }
+                                    )
+                                }
+                            },
+                            onLimitChange = { minutes ->
+                                updateApp(app.packageName) {
+                                    it.copy(
+                                        isSelected = true,
+                                        dailyLimitMinutes = minutes
+                                    )
+                                }
+                            }
+                        )
+                    }
+
+                    if (filteredApps.isEmpty()) {
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "No apps found",
+                                    fontFamily = OutfitFont,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Ink
+                                )
+
+                                Spacer(Modifier.height(6.dp))
+
+                                Text(
+                                    text = "Try another name or choose All Apps.",
+                                    fontFamily = JakartaFont,
+                                    fontSize = 13.sp,
+                                    color = Muted
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+}
 
-    selectedAppForLimit?.let { app ->
-        DailyLimitDialog(
-            appName = app.name,
-            currentMinutes = app.dailyLimitMinutes,
-            onDismiss = { selectedAppForLimit = null },
-            onLimitSet = { newMinutes ->
-                allApps = allApps.map {
-                    if (it.id == app.id) {
-                        it.copy(dailyLimitMinutes = newMinutes, isSelected = true)
-                    } else it
+@Composable
+private fun AppLimitCard(
+    app: SelectableApp,
+    appIcon: ImageBitmap?,
+    onSelectedChange: (Boolean) -> Unit,
+    onLimitChange: (Int) -> Unit
+) {
+    val shape = RoundedCornerShape(20.dp)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (app.isSelected) PaleTeal else Color.White,
+                shape
+            )
+            .border(
+                1.5.dp,
+                if (app.isSelected) Teal else LightTeal,
+                shape
+            )
+            .padding(14.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (appIcon != null) {
+                Image(
+                    bitmap = appIcon,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .background(
+                            LightPurple,
+                            RoundedCornerShape(12.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = app.name.take(1),
+                        fontFamily = OutfitFont,
+                        fontWeight = FontWeight.Bold,
+                        color = Purple
+                    )
                 }
-                selectedAppForLimit = null
             }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = app.name,
+                    fontFamily = OutfitFont,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    text = if (app.isSelected) {
+                        app.getFormattedLimit()
+                    } else {
+                        "Tap to select"
+                    },
+                    fontFamily = JakartaFont,
+                    fontSize = 12.sp,
+                    color = if (app.isSelected) DarkTeal else Muted
+                )
+            }
+
+            Checkbox(
+                checked = app.isSelected,
+                onCheckedChange = onSelectedChange,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Teal,
+                    uncheckedColor = Teal,
+                    checkmarkColor = Color.White
+                )
+            )
+        }
+
+        if (app.isSelected) {
+            Spacer(Modifier.height(14.dp))
+
+            HorizontalDivider(color = LightTeal)
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text = "Daily Usage Limit",
+                fontFamily = OutfitFont,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                color = Ink
+            )
+
+            Spacer(Modifier.height(5.dp))
+
+            Text(
+                text = "Set hours and minutes for this app.",
+                fontFamily = JakartaFont,
+                fontSize = 12.sp,
+                color = Muted
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            val total = app.dailyLimitMinutes ?: 0
+            val hours = total / 60
+            val minutes = total % 60
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        LightTeal,
+                        RoundedCornerShape(18.dp)
+                    )
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TimeSelector(
+                    value = hours,
+                    label = "Hours",
+                    range = 0..24,
+                    modifier = Modifier.weight(1f),
+                    onValueChange = { newHours ->
+                        val newTotal = newHours * 60 + minutes
+
+                        if (newTotal in 1..1440) {
+                            onLimitChange(newTotal)
+                        }
+                    }
+                )
+
+                Text(
+                    text = ":",
+                    fontFamily = ManropeFont,
+                    fontSize = 28.sp,
+                    color = Purple
+                )
+
+                TimeSelector(
+                    value = minutes,
+                    label = "Minutes",
+                    range = 0..59,
+                    modifier = Modifier.weight(1f),
+                    onValueChange = { newMinutes ->
+                        val newTotal = hours * 60 + newMinutes
+
+                        if (newTotal in 1..1440) {
+                            onLimitChange(newTotal)
+                        }
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text = if (app.dailyLimitMinutes != null) {
+                    "Daily limit: ${app.getFormattedLimit()}"
+                } else {
+                    "Choose a daily usage limit"
+                },
+                fontFamily = JakartaFont,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = DarkTeal
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimeSelector(
+    value: Int,
+    label: String,
+    range: IntRange,
+    modifier: Modifier = Modifier,
+    onValueChange: (Int) -> Unit
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        IconButton(
+            onClick = {
+                if (value < range.last) {
+                    onValueChange(value + 1)
+                }
+            },
+            enabled = value < range.last
+        ) {
+            Text(
+                text = "▲",
+                fontSize = 19.sp,
+                color = DarkTeal
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Color.White,
+                    RoundedCornerShape(14.dp)
+                )
+                .padding(vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = value.toString().padStart(2, '0'),
+                fontFamily = ManropeFont,
+                fontSize = 31.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Ink
+            )
+        }
+
+        IconButton(
+            onClick = {
+                if (value > range.first) {
+                    onValueChange(value - 1)
+                }
+            },
+            enabled = value > range.first
+        ) {
+            Text(
+                text = "▼",
+                fontSize = 19.sp,
+                color = DarkTeal
+            )
+        }
+
+        Text(
+            text = label,
+            fontFamily = JakartaFont,
+            fontSize = 12.sp,
+            color = Muted
         )
     }
 }
 
-@Composable
-private fun AppRowItem(
-    appName: String,
-    appIcon: ImageBitmap?,
-    isSelected: Boolean,
-    formattedLimit: String,
-    hasLimitSet: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    onLimitClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .toggleable(
-                value = isSelected,
-                role = Role.Checkbox,
-                onValueChange = onCheckedChange
-            )
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f)
-        ) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = null,
-                colors = CheckboxDefaults.colors(
-                    checkedColor = PrimaryBlue,
-                    uncheckedColor = TextSecondary,
-                    checkmarkColor = Color.White
-                )
-            )
+// Suggestions are matched against installed apps only.
+private fun isSuggestedApp(app: SelectableApp): Boolean {
+    val name = app.name.lowercase()
+    val pkg = app.packageName.lowercase()
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF021226)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (appIcon != null) {
-                    Image(
-                        bitmap = appIcon,
-                        contentDescription = appName,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Canvas(modifier = Modifier.size(18.dp)) {
-                        val dotSize = size.width * 0.38f
-                        val gap = size.width * 0.24f
-
-                        drawRoundRect(
-                            color = TextSecondary,
-                            topLeft = Offset(0f, 0f),
-                            size = Size(dotSize, dotSize),
-                            cornerRadius = CornerRadius(4f, 4f)
-                        )
-                        drawRoundRect(
-                            color = TextSecondary,
-                            topLeft = Offset(dotSize + gap, 0f),
-                            size = Size(dotSize, dotSize),
-                            cornerRadius = CornerRadius(4f, 4f)
-                        )
-                        drawRoundRect(
-                            color = TextSecondary,
-                            topLeft = Offset(0f, dotSize + gap),
-                            size = Size(dotSize, dotSize),
-                            cornerRadius = CornerRadius(4f, 4f)
-                        )
-                        drawRoundRect(
-                            color = TextSecondary,
-                            topLeft = Offset(dotSize + gap, dotSize + gap),
-                            size = Size(dotSize, dotSize),
-                            cornerRadius = CornerRadius(4f, 4f)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Text(
-                text = appName,
-                color = TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1
-            )
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.clickable { onLimitClick() }
-        ) {
-            if (isSelected) {
-                Text(
-                    text = formattedLimit,
-                    color = if (hasLimitSet) PrimaryBlue else ErrorRed,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = TextSecondary.copy(alpha = 0.5f),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
+    return listOf(
+        "tiktok",
+        "instagram",
+        "youtube",
+        "snapchat",
+        "facebook",
+        "twitter"
+    ).any { keyword ->
+        name.contains(keyword) || pkg.contains(keyword)
     }
 }
 
-@Composable
-private fun DailyLimitDialog(
-    appName: String,
-    currentMinutes: Int?,
-    onDismiss: () -> Unit,
-    onLimitSet: (Int) -> Unit
-) {
-    val initialMinutes = currentMinutes ?: 45
-    var isCustomSelected by remember { mutableStateOf(currentMinutes != null && currentMinutes !in listOf(15, 30, 60, 120)) }
-    var selectedMinutes by remember { mutableStateOf(initialMinutes) }
-    var customInputText by remember { mutableStateOf(initialMinutes.toString()) }
+private fun isSocialMediaApp(app: SelectableApp): Boolean {
+    val name = app.name.lowercase()
+    val pkg = app.packageName.lowercase()
 
-    val presetOptions = listOf(
-        "15 min" to 15,
-        "30 min" to 30,
-        "1 hour" to 60,
-        "2 hours" to 120
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = CardBackground,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Text(
-                text = "Daily Limit for $appName",
-                color = TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                presetOptions.forEach { (label, minutes) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .selectable(
-                                selected = (!isCustomSelected && selectedMinutes == minutes),
-                                onClick = {
-                                    isCustomSelected = false
-                                    selectedMinutes = minutes
-                                },
-                                role = Role.RadioButton
-                            ),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = (!isCustomSelected && selectedMinutes == minutes),
-                            onClick = null,
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = PrimaryBlue,
-                                unselectedColor = TextSecondary
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(text = label, color = TextPrimary, fontSize = 15.sp)
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp)
-                        .selectable(
-                            selected = isCustomSelected,
-                            onClick = { isCustomSelected = true },
-                            role = Role.RadioButton
-                        ),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = isCustomSelected,
-                        onClick = null,
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = PrimaryBlue,
-                            unselectedColor = TextSecondary
-                        )
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(text = "Custom", color = TextPrimary, fontSize = 15.sp)
-                }
-
-                if (isCustomSelected) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(BoxBackground)
-                            .border(1.dp, PrimaryBlue, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
-                                value = customInputText,
-                                onValueChange = { customInputText = it.filter { char -> char.isDigit() } },
-                                modifier = Modifier.width(72.dp),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = PrimaryBlue,
-                                    unfocusedBorderColor = BorderColor,
-                                    focusedTextColor = TextPrimary,
-                                    unfocusedTextColor = TextPrimary
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = "minutes / day",
-                                color = TextPrimary,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (isCustomSelected) {
-                        val parsed = customInputText.toIntOrNull()
-                        onLimitSet(if (parsed != null && parsed > 0) parsed else 45)
-                    } else {
-                        onLimitSet(selectedMinutes)
-                    }
-                }
-            ) {
-                Text("Save", color = PrimaryBlue, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSecondary)
-            }
-        }
-    )
+    return listOf(
+        "instagram",
+        "tiktok",
+        "snapchat",
+        "facebook",
+        "twitter",
+        "reddit",
+        "pinterest",
+        "threads",
+        "youtube"
+    ).any { keyword ->
+        name.contains(keyword) || pkg.contains(keyword)
+    }
 }

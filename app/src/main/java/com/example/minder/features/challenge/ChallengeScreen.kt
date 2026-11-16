@@ -1,4 +1,3 @@
-
 package com.example.minder.features.challenge
 
 import androidx.compose.foundation.Canvas
@@ -16,6 +15,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import com.example.minder.ui.theme.OutfitFont
+import com.example.minder.ui.theme.JakartaFont
+import com.example.minder.ui.theme.ManropeFont
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -51,12 +62,14 @@ import com.example.minder.domain.usecase.challenge.ChallengeResult
 import kotlinx.coroutines.delay
 import org.json.JSONObject
 
-private val PrimaryDark = Color(0xFF061D3A)
-private val CardColor = Color(0xFF0D3461)
-private val PrimaryBlue = Color(0xFF3289F5)
-private val BorderColor = Color(0xFF28639A)
-private val TextPrimary = Color.White
-private val TextSecondary = Color(0xFFB8C7D9)
+private val PrimaryDark = Color(0xFFF9F8FE)
+private val CardColor = Color.White
+private val PrimaryBlue = Color(0xFF38C9C5)
+private val Purple = Color(0xFF9061D8)
+private val Pink = Color(0xFFF3A1C8)
+private val BorderColor = Color(0xFFCDEFEC)
+private val TextPrimary = Color(0xFF302342)
+private val TextSecondary = Color(0xFF655B76)
 
 private val GameShapes = listOf("CIRCLE", "SQUARE", "TRIANGLE", "STAR")
 
@@ -157,337 +170,368 @@ fun ChallengeScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PrimaryDark)
-            .padding(horizontal = 20.dp, vertical = 20.dp)
-    ) {
-        Text(
-            text = "×",
-            color = TextPrimary,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Light,
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Box(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .clickable { onClose() }
-                .padding(4.dp)
-        )
+                .fillMaxSize()
+                .background(PrimaryDark)
+                .padding(horizontal = 20.dp, vertical = 20.dp)
+        ) {
+            // No dismiss button: the intervention must not be bypassed.
 
-        if (uiState.isLoading || challenge == null) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = uiState.errorMessage ?: "Loading challenge...",
-                    color = TextPrimary,
-                    fontSize = 18.sp
-                )
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center)
-                    .verticalScroll(rememberScrollState())
-                    .border(2.dp, BorderColor, RoundedCornerShape(28.dp))
-                    .background(CardColor, RoundedCornerShape(28.dp))
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("♣", color = PrimaryBlue, fontSize = 38.sp)
-                Spacer(Modifier.height(8.dp))
 
-                Text(
-                    text = "Challenge Time!",
-                    color = TextPrimary,
-                    fontSize = 25.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(8.dp))
+            if (uiState.isLoading || challenge == null) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = uiState.errorMessage ?: "Loading challenge...",
+                        color = TextPrimary,
+                        fontSize = 18.sp
+                        ,
+                        fontFamily = JakartaFont)
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.Center)
+                        .verticalScroll(rememberScrollState())
+                        .border(1.dp, BorderColor, RoundedCornerShape(26.dp))
+                        .background(CardColor, RoundedCornerShape(26.dp))
+                        .padding(horizontal = 20.dp, vertical = 26.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("✦", color = Purple, fontSize = 38.sp, fontFamily = OutfitFont, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
 
-                Text(
-                    text = "Solve the challenge to continue using the app.",
-                    color = TextSecondary,
-                    fontSize = 14.sp
-                )
-                Spacer(Modifier.height(22.dp))
+                    Text(
+                        text = "Challenge Time!",
+                        textAlign = TextAlign.Center,
+                        color = TextPrimary,
+                        fontSize = 30.sp,
+                        fontFamily = OutfitFont,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(8.dp))
 
-                Text(
-                    text = challenge.question,
-                    color = TextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(20.dp))
+                    Text(
+                        text = "Take a mindful moment before continuing.",
+                        modifier = Modifier.fillMaxWidth(),
+                        color = TextSecondary,
+                        fontFamily = JakartaFont,
+                        textAlign = TextAlign.Center,
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(22.dp))
 
-                when (gameType) {
-                    "MATH" -> {
-                        OutlinedTextField(
-                            value = uiState.userAnswer,
-                            onValueChange = { viewModel.updateAnswer(it) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number
-                            ),
-                            label = {
-                                Text("Your answer", color = TextSecondary)
-                            },
-                            colors = TextFieldDefaults.colors(
-                                focusedTextColor = TextPrimary,
-                                unfocusedTextColor = TextPrimary,
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = PrimaryBlue,
-                                unfocusedIndicatorColor = BorderColor,
-                                focusedLabelColor = PrimaryBlue,
-                                unfocusedLabelColor = TextSecondary,
-                                cursorColor = PrimaryBlue
-                            )
-                        )
-                    }
+                    Text(
+                        text = challenge.question,
+                        modifier = Modifier.fillMaxWidth(),
+                        color = TextPrimary,
+                        fontFamily = ManropeFont,
+                        textAlign = TextAlign.Center,
+                        fontSize = 23.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(20.dp))
 
-                    //Ragahd-: Reads the shapes array saved by the odd shape generator.
-                    "ODD_SHAPE" -> {
-                        val shapes = gameData.readStringList("shapes")
-
-                        if (shapes.isEmpty()) {
-                            GameDataError()
-                        } else {
-                            Text(
-                                "Tap the shape that is different.",
-                                color = TextSecondary,
-                                fontSize = 14.sp
-                            )
-                            Spacer(Modifier.height(14.dp))
-
-                            ShapeGrid(
-                                shapes = shapes,
-                                selectedIndex = selectedIndex,
-                                enabled = !uiState.isSubmitting && uiState.result == null,
-                                onSelect = { index ->
-                                    selectedIndex = index
-                                    viewModel.updateAnswer(index.toString())
-                                }
+                    when (gameType) {
+                        "MATH" -> {
+                            OutlinedTextField(
+                                value = uiState.userAnswer,
+                                onValueChange = { viewModel.updateAnswer(it) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number
+                                ),
+                                label = {
+                                    Text("Your answer", color = TextSecondary, fontFamily = JakartaFont)
+                                },
+                                colors = TextFieldDefaults.colors(
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary,
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    focusedIndicatorColor = PrimaryBlue,
+                                    unfocusedIndicatorColor = BorderColor,
+                                    focusedLabelColor = PrimaryBlue,
+                                    unfocusedLabelColor = TextSecondary,
+                                    cursorColor = PrimaryBlue
+                                )
                             )
                         }
-                    }
 
-                    "COMPLETE_PATTERN" -> {
-                        val pattern = gameData.readStringList("pattern")
-                        val options = gameData.readStringList("options")
+                        //Ragahd-: Reads the shapes array saved by the odd shape generator.
+                        "ODD_SHAPE" -> {
+                            val shapes = gameData.readStringList("shapes")
 
-                        if (pattern.isEmpty() || options.isEmpty()) {
-                            GameDataError()
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                pattern.forEach { shape ->
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(3.dp)
-                                            .size(48.dp)
-                                            .border(
-                                                1.dp,
-                                                BorderColor,
-                                                RoundedCornerShape(10.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (shape == "?") {
-                                            Text(
-                                                "?",
-                                                color = PrimaryBlue,
-                                                fontSize = 27.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        } else {
-                                            ShapeDrawing(
-                                                shape = shape,
-                                                modifier = Modifier.size(32.dp)
-                                            )
+                            if (shapes.isEmpty()) {
+                                GameDataError()
+                            } else {
+                                Text(
+                                    "Tap the shape that is different.",
+                                    color = TextSecondary,
+                                    fontSize = 14.sp
+                                    ,
+                                    fontFamily = JakartaFont)
+                                Spacer(Modifier.height(14.dp))
+
+                                ShapeGrid(
+                                    shapes = shapes,
+                                    selectedIndex = selectedIndex,
+                                    enabled = !uiState.isSubmitting && uiState.result == null,
+                                    onSelect = { index ->
+                                        selectedIndex = index
+                                        viewModel.updateAnswer(index.toString())
+                                    }
+                                )
+                            }
+                        }
+
+                        "COMPLETE_PATTERN" -> {
+                            val pattern = gameData.readStringList("pattern")
+                            val options = gameData.readStringList("options")
+
+                            if (pattern.isEmpty() || options.isEmpty()) {
+                                GameDataError()
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    pattern.forEach { shape ->
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(3.dp)
+                                                .size(48.dp)
+                                                .border(
+                                                    1.dp,
+                                                    BorderColor,
+                                                    RoundedCornerShape(10.dp)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (shape == "?") {
+                                                Text(
+                                                    "?",
+                                                    color = PrimaryBlue,
+                                                    fontSize = 27.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                    ,
+                                                    fontFamily = ManropeFont)
+                                            } else {
+                                                ShapeDrawing(
+                                                    shape = shape,
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            Spacer(Modifier.height(18.dp))
-                            Text(
-                                "Choose the missing shape.",
-                                color = TextSecondary,
-                                fontSize = 14.sp
-                            )
-                            Spacer(Modifier.height(12.dp))
+                                Spacer(Modifier.height(18.dp))
+                                Text(
+                                    "Choose the missing shape.",
+                                    color = TextSecondary,
+                                    fontSize = 14.sp
+                                    ,
+                                    fontFamily = JakartaFont)
+                                Spacer(Modifier.height(12.dp))
 
-                            ShapeGrid(
-                                shapes = options,
-                                selectedIndex = options.indexOf(selectedPatternShape),
-                                enabled = !uiState.isSubmitting && uiState.result == null,
-                                onSelect = { index ->
-                                    selectedPatternShape = options[index]
-                                    viewModel.updateAnswer(options[index])
-                                }
-                            )
-                        }
-                    }
-
-                    "SEQUENCE_MEMORY" -> {
-                        val sequence = gameData.readStringList("sequence")
-
-                        if (sequence.isEmpty()) {
-                            GameDataError()
-                        } else if (showingSequence) {
-                            Text(
-                                "Memorize this sequence!",
-                                color = PrimaryBlue,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.height(18.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                sequence.forEach { shape ->
-                                    ShapeDrawing(
-                                        shape = shape,
-                                        modifier = Modifier
-                                            .padding(4.dp)
-                                            .size(38.dp)
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "The sequence will hide shortly.",
-                                color = TextSecondary,
-                                fontSize = 13.sp
-                            )
-                        } else {
-                            Text(
-                                "Tap the shapes in the remembered order.",
-                                color = TextSecondary,
-                                fontSize = 14.sp
-                            )
-                            Spacer(Modifier.height(14.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                repeat(sequence.size) { index ->
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(3.dp)
-                                            .size(35.dp)
-                                            .border(
-                                                1.dp,
-                                                BorderColor,
-                                                RoundedCornerShape(8.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (index < enteredSequence.size) {
-                                            ShapeDrawing(
-                                                shape = enteredSequence[index],
-                                                modifier = Modifier.size(25.dp)
-                                            )
-                                        } else {
-                                            Text(
-                                                "•",
-                                                color = TextSecondary,
-                                                fontSize = 20.sp
-                                            )
-                                        }
+                                ShapeGrid(
+                                    shapes = options,
+                                    selectedIndex = options.indexOf(selectedPatternShape),
+                                    enabled = !uiState.isSubmitting && uiState.result == null,
+                                    onSelect = { index ->
+                                        selectedPatternShape = options[index]
+                                        viewModel.updateAnswer(options[index])
                                     }
-                                }
+                                )
                             }
+                        }
 
-                            Spacer(Modifier.height(16.dp))
-                            ShapeGrid(
-                                shapes = GameShapes,
-                                selectedIndex = -1,
-                                enabled = !uiState.isSubmitting && uiState.result == null,
-                                onSelect = { index ->
-                                    if (enteredSequence.size < sequence.size) {
-                                        enteredSequence.add(GameShapes[index])
-                                        viewModel.updateAnswer(
-                                            enteredSequence.joinToString(",")
+                        "SEQUENCE_MEMORY" -> {
+                            val sequence = gameData.readStringList("sequence")
+
+                            if (sequence.isEmpty()) {
+                                GameDataError()
+                            } else if (showingSequence) {
+                                Text(
+                                    "Memorize this sequence!",
+                                    color = PrimaryBlue,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                    ,
+                                    fontFamily = OutfitFont)
+                                Spacer(Modifier.height(18.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    sequence.forEach { shape ->
+                                        ShapeDrawing(
+                                            shape = shape,
+                                            modifier = Modifier
+                                                .padding(4.dp)
+                                                .size(38.dp)
                                         )
                                     }
                                 }
-                            )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "The sequence will hide shortly.",
+                                    color = TextSecondary,
+                                    fontSize = 13.sp
+                                    ,
+                                    fontFamily = JakartaFont)
+                            } else {
+                                Text(
+                                    "Tap the shapes in the remembered order.",
+                                    color = TextSecondary,
+                                    fontSize = 14.sp
+                                    ,
+                                    fontFamily = JakartaFont)
+                                Spacer(Modifier.height(14.dp))
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Button(
-                                    onClick = {
-                                        enteredSequence.clear()
-                                        viewModel.updateAnswer("")
-                                    },
-                                    enabled = !uiState.isSubmitting && uiState.result == null,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = BorderColor
-                                    )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Text("Clear sequence")
+                                    repeat(sequence.size) { index ->
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(3.dp)
+                                                .size(35.dp)
+                                                .border(
+                                                    1.dp,
+                                                    BorderColor,
+                                                    RoundedCornerShape(8.dp)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (index < enteredSequence.size) {
+                                                ShapeDrawing(
+                                                    shape = enteredSequence[index],
+                                                    modifier = Modifier.size(25.dp)
+                                                )
+                                            } else {
+                                                Text(
+                                                    "•",
+                                                    color = TextSecondary,
+                                                    fontSize = 20.sp
+                                                    ,
+                                                    fontFamily = ManropeFont)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(16.dp))
+                                ShapeGrid(
+                                    shapes = GameShapes,
+                                    selectedIndex = -1,
+                                    enabled = !uiState.isSubmitting && uiState.result == null,
+                                    onSelect = { index ->
+                                        if (enteredSequence.size < sequence.size) {
+                                            enteredSequence.add(GameShapes[index])
+                                            viewModel.updateAnswer(
+                                                enteredSequence.joinToString(",")
+                                            )
+                                        }
+                                    }
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            enteredSequence.clear()
+                                            viewModel.updateAnswer("")
+                                        },
+                                        enabled = !uiState.isSubmitting && uiState.result == null,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = BorderColor
+                                        )
+                                    ) {
+                                        Text("Clear sequence",
+                                            fontFamily = JakartaFont)
+                                    }
                                 }
                             }
                         }
+
+                        else -> GameDataError()
                     }
 
-                    else -> GameDataError()
-                }
+                    if (uiState.isWrong) {
+                        Spacer(Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFFCECF5), RoundedCornerShape(18.dp))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "Not Quite Right — Give it another try!",
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Color(0xFFA8456F),
+                                fontFamily = JakartaFont,
+                                textAlign = TextAlign.Center,
+                                fontSize = 15.sp
+                            )
+                        }
+                    }
 
-                if (uiState.isWrong || uiState.errorMessage != null) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = if (uiState.isWrong) {
-                            "Incorrect answer. Try again."
-                        } else {
-                            uiState.errorMessage.orEmpty()
-                        },
-                        color = Color(0xFFFF8A8A),
-                        fontSize = 14.sp
-                    )
-                }
+                    if (uiState.errorMessage != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = uiState.errorMessage.orEmpty(),
+                            color = Color(0xFFA8456F),
+                            fontSize = 14.sp
+                            ,
+                            fontFamily = JakartaFont)
+                    }
 
-                Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(20.dp))
 
-                Button(
-                    onClick = { viewModel.submitAnswer() },
-                    enabled = isGameDataValid &&
-                        uiState.userAnswer.isNotBlank() &&
-                            !uiState.isSubmitting &&
-                            !uiState.isLoading &&
-                            uiState.result == null &&
-                            !(gameType == "SEQUENCE_MEMORY" && showingSequence),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(15.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = PrimaryBlue,
-                        disabledContainerColor = BorderColor
-                    )
-                ) {
-                    Text(
-                        text = if (uiState.isSubmitting) {
-                            "Checking..."
-                        } else {
-                            "Submit Answer"
-                        },
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Button(
+                        onClick = { viewModel.submitAnswer() },
+                        enabled = isGameDataValid &&
+                                uiState.userAnswer.isNotBlank() &&
+                                !uiState.isSubmitting &&
+                                !uiState.isLoading &&
+                                uiState.result == null &&
+                                !(gameType == "SEQUENCE_MEMORY" && showingSequence) &&
+                                (gameType != "SEQUENCE_MEMORY" ||
+                                        enteredSequence.size == gameData.readStringList("sequence").size),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+                        shape = RoundedCornerShape(50.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PrimaryBlue,
+                            disabledContainerColor = BorderColor
+                        )
+                    ) {
+                        Text(
+                            text = if (uiState.isSubmitting) {
+                                "Checking..."
+                            } else {
+                                "Submit Answer"
+                            },
+                            color = TextPrimary,
+                            fontFamily = OutfitFont,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
@@ -520,15 +564,15 @@ private fun ShapeGrid(
                         .border(
                             width = if (selected) 2.dp else 1.dp,
                             color = if (selected) PrimaryBlue else BorderColor,
-                            shape = RoundedCornerShape(14.dp)
+                            shape = RoundedCornerShape(18.dp)
                         )
                         .background(
                             color = if (selected) {
-                                PrimaryBlue.copy(alpha = 0.22f)
+                                PrimaryBlue.copy(alpha = 0.18f)
                             } else {
-                                PrimaryDark.copy(alpha = 0.25f)
+                                Color(0xFFF1FCFB)
                             },
-                            shape = RoundedCornerShape(14.dp)
+                            shape = RoundedCornerShape(18.dp)
                         )
                         .clickable(enabled = enabled) { onSelect(index) },
                     contentAlignment = Alignment.Center
@@ -547,10 +591,10 @@ private fun ShapeDrawing(
     modifier: Modifier = Modifier
 ) {
     val shapeColor = when (shape.uppercase()) {
-        "CIRCLE" -> Color(0xFF55C6FF)
-        "SQUARE" -> Color(0xFFFFC857)
-        "TRIANGLE" -> Color(0xFFFF7B72)
-        "STAR" -> Color(0xFFB69CFF)
+        "CIRCLE" -> Color(0xFF38C9C5)
+        "SQUARE" -> Color(0xFF9061D8)
+        "TRIANGLE" -> Color(0xFFF3A1C8)
+        "STAR" -> Color(0xFF78B8F5)
         else -> TextSecondary
     }
 
@@ -619,7 +663,9 @@ private fun ShapeDrawing(
 private fun GameDataError() {
     Text(
         text = "Challenge data is missing or invalid. Please close and reopen the challenge.",
-        color = Color(0xFFFF8A8A),
+        color = Color(0xFFA8456F),
         fontSize = 14.sp
-    )
+        ,
+        fontFamily = JakartaFont)
 }
+

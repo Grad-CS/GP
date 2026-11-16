@@ -19,6 +19,9 @@ import com.example.minder.services.monitoring.AppAccessibilityService
 import com.example.minder.ui.theme.MinderTheme
 
 class ChallengeActivity : ComponentActivity() {
+
+    // Lama - Intervention repository for Home statistics
+    private lateinit var interventionRepository: InterventionRepositoryImpl
     private var challengeFinished = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,7 +39,10 @@ class ChallengeActivity : ComponentActivity() {
 
         val database = MinderDatabase.getDatabase(applicationContext)
         val challengeRepository = ChallengeRepositoryImpl(database.challengeDao())
-        val interventionRepository = InterventionRepositoryImpl(database.interventionDao())
+        // Lama - Initialize the shared intervention repository
+        interventionRepository = InterventionRepositoryImpl(
+            database.interventionDao()
+        )
         val attemptRepository = ChallengeAttemptRepositoryImpl(database.challengeAttemptDao())
 
         val getChallenge = GetInterventionChallengeUseCase(

@@ -1,39 +1,24 @@
 package com.example.minder.features.blocking
 
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.lifecycleScope
 import com.example.minder.data.local.database.MinderDatabase
-import com.example.minder.data.repository.ChallengeRepositoryImpl
 import com.example.minder.data.repository.DailyUsageRepositoryImpl
-import com.example.minder.data.repository.InterventionRepositoryImpl
-import com.example.minder.data.repository.RestrictedAppRepositoryImpl
-import com.example.minder.domain.usecase.challenge.GenerateChallengeUseCase
-import com.example.minder.domain.usecase.intervention.StartInterventionUseCase
-import com.example.minder.domain.usecase.usage.CheckDailyLimitUseCase
-import com.example.minder.features.challenge.ChallengeActivity
-import com.example.minder.ui.theme.MinderTheme
-import kotlinx.coroutines.launch
-import com.example.minder.services.monitoring.AppAccessibilityService
-//Ragahd-: Imports the challenge types used for intervention creation.
-import com.example.minder.domain.model.ChallengeType
-//Ragahd-: Provides access to the current user.
-import com.example.minder.data.repository.UserRepositoryImpl
-//Ragahd-: Provides access to the user's saved settings.
-import com.example.minder.data.repository.UserSettingsRepositoryImpl
-import androidx.compose.runtime.mutableStateOf
 import com.example.minder.data.repository.ExtensionRequestRepositoryImpl
+import com.example.minder.data.repository.RestrictedAppRepositoryImpl
+import com.example.minder.domain.usecase.usage.CheckDailyLimitUseCase
 import com.example.minder.domain.usecase.usage.RequestDailyExtensionUseCase
+import com.example.minder.services.monitoring.AppAccessibilityService
+import com.example.minder.ui.theme.MinderTheme
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
-
 class BlockingActivity : ComponentActivity() {
-
-    //Ragahd-: Prevents duplicate challenge creation from repeated taps.
-    private var isStartingChallenge = false
 
     companion object {
         const val EXTRA_APP_ID = "app_id"
@@ -44,103 +29,53 @@ class BlockingActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val appId =
-            intent.getIntExtra(EXTRA_APP_ID, -1)
-
-        val packageName =
-            intent.getStringExtra(EXTRA_PACKAGE_NAME)
-
+        val appId = intent.getIntExtra(EXTRA_APP_ID, -1)
         if (appId == -1) {
-            Log.e(
-                "MinderBlocking",
-                "Invalid appId"
-            )
-
+            Log.e("MinderBlocking", "Invalid appId")
             finish()
             return
         }
 
-        val database =
-            MinderDatabase.getDatabase(applicationContext)
+        val database = MinderDatabase.getDatabase(applicationContext)
+        val restrictedAppRepository = RestrictedAppRepositoryImpl(database.restrictedAppDao())
+        val dailyUsageRepository = DailyUsageRepositoryImpl(database.dailyUsageDao())
+        val checkDailyLimitUseCase = CheckDailyLimitUseCase(
+            restrictedAppRepository = restrictedAppRepository,
+            dailyUsageRepository = dailyUsageRepository
+        )
+        val extensionRepository = ExtensionRequestRepositoryImpl(database.extensionRequestDao())
+        val requestDailyExtensionUseCase = RequestDailyExtensionUseCase(
+            extensionRequestRepository = extensionRepository
+        )
 
-//Ragahd-: Initializes repositories for retrieving the current user and saved settings.
-        val userRepository = UserRepositoryImpl(database.userDao())
-
-//Ragahd-: Initializes the repository that stores user preferences.
-        val userSettingsRepository =
-            UserSettingsRepositoryImpl(database.userSettingsDao())
-
-        val restrictedAppRepository =
-            RestrictedAppRepositoryImpl(
-                database.restrictedAppDao()
-            )
-
-        val dailyUsageRepository =
-            DailyUsageRepositoryImpl(
-                database.dailyUsageDao()
-            )
-
-        val challengeRepository =
-            ChallengeRepositoryImpl(
-                database.challengeDao()
-            )
-
-        val interventionRepository =
-            InterventionRepositoryImpl(
-                database.interventionDao()
-            )
-
-        val generateChallengeUseCase =
-            GenerateChallengeUseCase(
-                challengeRepository
-            )
-
-        val startInterventionUseCase =
-            StartInterventionUseCase(
-                generateChallengeUseCase = generateChallengeUseCase,
-                interventionRepository = interventionRepository
-            )
-
-        val checkDailyLimitUseCase =
-            CheckDailyLimitUseCase(
-                restrictedAppRepository = restrictedAppRepository,
-                dailyUsageRepository = dailyUsageRepository
-            )
-
-        //Ragahd-: Initializes the repository that stores daily extension requests.
-        val extensionRequestRepository =
-            ExtensionRequestRepositoryImpl(
-                database.extensionRequestDao()
-            )
-
-//Ragahd-: Initializes the use case for requesting a daily extension.
-        val requestDailyExtensionUseCase =
-            RequestDailyExtensionUseCase(
-                extensionRequestRepository = extensionRequestRepository
-            )
-
-//Ragahd-: Tracks whether the app has already used its daily extension.
         val extensionAlreadyUsedToday = mutableStateOf<Boolean?>(null)
+        val isRequestingExtension = mutableStateOf(false)
+        val extensionError = mutableStateOf<String?>(null)
 
-//Ragahd-: Loads today's extension status for the blocked app.
         lifecycleScope.launch {
-            val calendar = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-
-            val dayStart = calendar.timeInMillis
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-            val nextDayStart = calendar.timeInMillis
-
-            extensionAlreadyUsedToday.value =
-                extensionRequestRepository.getRequestForAppOnDate(
+            try {
+                val calendar = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val dayStart = calendar.timeInMillis
+                calendar.add(Calendar.DAY_OF_YEAR, 1)
+                val nextDayStart = calendar.timeInMillis
+                extensionAlreadyUsedToday.value = extensionRepository.getRequestForAppOnDate(
                     appId = appId,
                     dayStart = dayStart,
                     nextDayStart = nextDayStart
                 ) != null
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                Log.e("MinderBlocking", "Failed to check extension availability", exception)
+                extensionError.value = "Unable to check extension availability. Please try again later."
+                // Remain unavailable when eligibility cannot be verified.
+                extensionAlreadyUsedToday.value = true
+            }
         }
 
         setContent {
@@ -150,54 +85,50 @@ class BlockingActivity : ComponentActivity() {
                     interventionId = -1,
                     initialRemainingSeconds = 0L,
                     checkDailyLimitUseCase = checkDailyLimitUseCase,
-
-                    //Ragahd-: Passes the daily extension usage status to the screen.
                     extensionAlreadyUsedToday = extensionAlreadyUsedToday.value,
-
-                    //Ragahd-: Requests the selected extension and closes the blocking screen when granted.
+                    isRequestingExtension = isRequestingExtension.value,
+                    extensionError = extensionError.value,
                     onRequestExtension = { selectedMinutes ->
-                        lifecycleScope.launch {
-                            try {
-                                val extensionId = requestDailyExtensionUseCase(
-                                    appId = appId,
-                                    selectedMinutes = selectedMinutes
-                                )
-
-                                if (extensionId != null) {
-                                    finish()
-                                } else {
-                                    extensionAlreadyUsedToday.value = true
+                        if (!isRequestingExtension.value && extensionAlreadyUsedToday.value == false) {
+                            isRequestingExtension.value = true
+                            extensionError.value = null
+                            lifecycleScope.launch {
+                                try {
+                                    val extensionId = requestDailyExtensionUseCase(
+                                        appId = appId,
+                                        selectedMinutes = selectedMinutes
+                                    )
+                                    if (extensionId != null) {
+                                        // Keep the existing completion behaviour. The monitor
+                                        // must independently recognise the saved extension.
+                                        finish()
+                                    } else {
+                                        extensionAlreadyUsedToday.value = true
+                                        extensionError.value = "An extension could not be granted."
+                                    }
+                                } catch (exception: CancellationException) {
+                                    throw exception
+                                } catch (exception: Exception) {
+                                    Log.e("MinderBlocking", "Failed to request daily extension", exception)
+                                    extensionError.value = "Unable to extend time. Please try again."
+                                } finally {
+                                    isRequestingExtension.value = false
                                 }
-                            } catch (exception: Exception) {
-                                Log.e(
-                                    "MinderBlocking",
-                                    "Failed to request daily extension",
-                                    exception
-                                )
                             }
                         }
                     },
-
-                    //Ragahd-: Returns the user to Home without granting an extension.
                     onExitApp = {
                         AppAccessibilityService.requestExitToHome()
                         finish()
                     },
-
-                    onTimeFinished = {
-                        // Nothing yet
-                    }
+                    onTimeFinished = { /* Daily-limit screen has no countdown. */ }
                 )
             }
         }
     }
-    // Lama - Notify monitoring when the blocking screen is no longer visible.
+
     override fun onStop() {
         super.onStop()
         AppAccessibilityService.notifyBlockingClosed()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
     }
 }

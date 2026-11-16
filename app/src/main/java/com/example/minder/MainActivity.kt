@@ -1,10 +1,28 @@
 package com.example.minder
 
 import android.os.Bundle
+import com.example.minder.core.navigation.MinderBottomBar
+import com.example.minder.features.settings.SettingsConnectedScreen
+import com.example.minder.features.settings.SettingsViewModel
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +50,7 @@ import com.example.minder.domain.usecase.user.InitializeLocalUserUseCase
 import com.example.minder.features.app_selection.AppSelectionScreen
 import com.example.minder.features.app_selection.SelectableApp
 import com.example.minder.features.home.HomeScreen
+import com.example.minder.features.home.AddAppsScreen
 import com.example.minder.features.onboarding.SplashScreen
 import com.example.minder.features.onboarding.WelcomeScreen
 import com.example.minder.features.permissions.PermissionsScreen
@@ -97,6 +116,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var usageStatsService: UsageStatsService
     private lateinit var saveUsageSessionsUseCase: SaveUsageSessionsUseCase
     private lateinit var updateDailyUsageUseCase: UpdateDailyUsageUseCase
+    // Lama - Home data refresh and read-only repositories.
+    private var homeRefreshToken by mutableIntStateOf(0)
+    private lateinit var homeDailyUsageRepository: DailyUsageRepositoryImpl
+    private lateinit var homeInterventionRepository: InterventionRepositoryImpl
     private lateinit var restrictedAppRepository: RestrictedAppRepositoryImpl
     private lateinit var userSettingsRepository: UserSettingsRepositoryImpl
     private lateinit var saveRestrictedAppsUseCase: SaveRestrictedAppsUseCase
@@ -152,6 +175,7 @@ class MainActivity : ComponentActivity() {
 
     //Ragahd-: Provides progress data to the Progress feature.
     private lateinit var progressViewModel: ProgressViewModel
+    private lateinit var settingsViewModel: SettingsViewModel
 
     //Ragahd-: Navigate according to the saved onboarding state
     private fun navigateAfterSplash() {
@@ -184,9 +208,64 @@ class MainActivity : ComponentActivity() {
 
                 // الاحتفاظ بالتطبيقات التي حددها المستخدم مع حدودها الزمنية
                 var selectedAppsList by remember { mutableStateOf<List<SelectableApp>>(emptyList()) }
+                var onboardingDifficulty by remember { mutableStateOf("medium") }
+                var settingsUserId by remember { mutableStateOf<Int?>(null) }
+                var settingsMinDailyLimit by remember { mutableStateOf<Int?>(null) }
 
 
                 var isEditingAppsFromHome by remember { mutableStateOf(false) }
+                // Lama - Home-only picker state.
+                var showAddAppsScreen by remember { mutableStateOf(false) }
+                // Lama - Home statistics are loaded from Room.
+                var homeUsageMap by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+                var homeTodayUsage by remember { mutableStateOf<Int?>(null) }
+                var homeChallengesCompleted by remember { mutableStateOf<Int?>(null) }
+
+                LaunchedEffect(currentScreen, homeRefreshToken) {
+                    if (currentScreen is AppScreen.Home &&
+                        ::homeDailyUsageRepository.isInitialized &&
+                        ::homeInterventionRepository.isInitialized &&
+                        ::restrictedAppRepository.isInitialized &&
+                        ::userRepository.isInitialized
+                    ) {
+                        try {
+                            val user = userRepository.getUser() ?: return@LaunchedEffect
+                            val dayStart = Calendar.getInstance().apply {
+                                set(Calendar.HOUR_OF_DAY, 0)
+                                set(Calendar.MINUTE, 0)
+                                set(Calendar.SECOND, 0)
+                                set(Calendar.MILLISECOND, 0)
+                            }.timeInMillis
+                            val dayEnd = Calendar.getInstance().apply {
+                                timeInMillis = dayStart
+                                add(Calendar.DAY_OF_MONTH, 1)
+                            }.timeInMillis
+                            val apps = restrictedAppRepository.getAppsByUserId(user.userId)
+                                .filter { it.isEnabled }
+                            val usage = mutableMapOf<String, Int>()
+                            var secondsTotal = 0L
+                            var completed = 0
+                            for (app in apps) {
+                                val seconds = (homeDailyUsageRepository.getUsageForDate(
+                                    appId = app.id, date = dayStart
+                                )?.totalUsage ?: 0).coerceAtLeast(0)
+                                usage[app.packageName] = ((seconds.toLong() + 59) / 60).toInt()
+                                secondsTotal += seconds
+                                completed += homeInterventionRepository.getInterventionsForPeriod(
+                                    appId = app.id, startTime = dayStart, endTime = dayEnd
+                                ).count { it.status == "UNLOCKED" }
+                            }
+                            homeUsageMap = usage
+                            homeTodayUsage = ((secondsTotal + 59) / 60).toInt()
+                            homeChallengesCompleted = completed
+                        } catch (e: Exception) {
+                            Log.e("MinderHome", "Home data load failed", e)
+                            homeUsageMap = emptyMap()
+                            homeTodayUsage = null
+                            homeChallengesCompleted = null
+                        }
+                    }
+                }
 
 
                 //Ragahd-: Restore selected apps from Room when Home opens
@@ -217,6 +296,27 @@ class MainActivity : ComponentActivity() {
                             }
                         } catch (e: Exception) {
                             Log.e("MainActivity", "Failed to restore selected apps", e)
+                        }
+                    }
+                }
+
+                LaunchedEffect(currentScreen) {
+                    if (currentScreen is AppScreen.Settings &&
+                        ::userRepository.isInitialized &&
+                        ::restrictedAppRepository.isInitialized
+                    ) {
+                        try {
+                            val user = userRepository.getUser()
+                            settingsUserId = user?.userId
+                            settingsMinDailyLimit = user?.let { u ->
+                                restrictedAppRepository.getAppsByUserId(u.userId)
+                                    .filter { it.isEnabled }
+                                    .minOfOrNull { it.dailyLimit }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("MinderSettings", "Unable to load settings context", e)
+                            settingsUserId = null
+                            settingsMinDailyLimit = null
                         }
                     }
                 }
@@ -271,9 +371,15 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 emptyList()
                             },
-                             onBackClick = {
-                               appStateHandler.navigateTo(AppScreen.Questionnaire)
-                             },
+                            onBackClick = {
+                                // Lama - Return to the originating screen.
+                                if (isEditingAppsFromHome) {
+                                    isEditingAppsFromHome = false
+                                    appStateHandler.navigateTo(AppScreen.Home)
+                                } else {
+                                    appStateHandler.navigateTo(AppScreen.Questionnaire)
+                                }
+                            },
 
 
 
@@ -372,6 +478,9 @@ class MainActivity : ComponentActivity() {
                                 appStateHandler.navigateTo(screen = AppScreen.AppSelection)
                             },
 
+                            onSettingsSaved = { _, difficulty ->
+                                onboardingDifficulty = difficulty.value
+                            },
                             onNextClick = { intervalMinutes ->
                                 lifecycleScope.launch {
                                     try {
@@ -401,7 +510,7 @@ class MainActivity : ComponentActivity() {
                                         }
 
 
-                                       //Ragahd-: Validate every selected app before saving challenge settings
+                                        //Ragahd-: Validate every selected app before saving challenge settings
                                         val allAppsValid = savedApps.all { app ->
                                             intervalMinutes < app.dailyLimit
                                         }
@@ -415,7 +524,7 @@ class MainActivity : ComponentActivity() {
                                             return@launch
                                         }
 
-                                      //Ragahd-: Create challenge settings or update existing settings after validation
+                                        //Ragahd-: Create challenge settings or update existing settings after validation
                                         val existingSettings =
                                             userSettingsRepository.getSettingsByUserId(user.userId)
 
@@ -424,7 +533,7 @@ class MainActivity : ComponentActivity() {
                                                 UserSettings(
                                                     settingsId = 0,
                                                     userId = user.userId,
-                                                    challengeDifficulty = "MEDIUM",
+                                                    challengeDifficulty = onboardingDifficulty,
                                                     challengeInterval = intervalMinutes,
                                                     blockingEnabled = false,
                                                     usageAccessGranted = usagePermissionManager.hasUsageAccess()
@@ -433,6 +542,7 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             userSettingsRepository.updateSettings(
                                                 existingSettings.copy(
+                                                    challengeDifficulty = onboardingDifficulty,
                                                     challengeInterval = intervalMinutes,
                                                     usageAccessGranted = usagePermissionManager.hasUsageAccess()
                                                 )
@@ -477,48 +587,204 @@ class MainActivity : ComponentActivity() {
                     }
 
                     is AppScreen.Home -> {
-                        HomeScreen(
-                            selectedApps = selectedAppsList,
-
-                            onSettingsClick = {
-                                // Settings navigation will be connected later.
-                            },
-
-                            onTabSelected = { tabIndex ->
-                                when (tabIndex) {
-                                    1 -> {
-                                        //Ragahd-: Navigate to Statistics screen.
-                                        appStateHandler.navigateTo(AppScreen.Statistics)
-                                    }
-
-                                    2 -> {
-                                        //Ragahd-: Navigate to Progress screen.
-                                        appStateHandler.navigateTo(AppScreen.Progress)
+                        if (showAddAppsScreen) {
+                            AddAppsScreen(
+                                existingPackages = selectedAppsList.map { it.packageName }.toSet(),
+                                onBack = { showAddAppsScreen = false },
+                                onAddApps = { picked ->
+                                    lifecycleScope.launch {
+                                        try {
+                                            val user = userRepository.getUser() ?: return@launch
+                                            for (pickedApp in picked) {
+                                                val existing = restrictedAppRepository.getAppByPackageName(
+                                                    user.userId, pickedApp.packageName
+                                                )
+                                                if (existing == null) {
+                                                    // Lama - Reuse the domain model's existing constructor fields.
+                                                    restrictedAppRepository.addApp(
+                                                        com.example.minder.domain.model.RestrictedApp(
+                                                            id = 0,
+                                                            userId = user.userId,
+                                                            appName = pickedApp.name,
+                                                            packageName = pickedApp.packageName,
+                                                            dailyLimit = 30,
+                                                            isEnabled = true,
+                                                            addedAt = System.currentTimeMillis()
+                                                        )
+                                                    )
+                                                } else if (!existing.isEnabled) {
+                                                    restrictedAppRepository.updateApp(existing.copy(isEnabled = true))
+                                                }
+                                            }
+                                            val updated = restrictedAppRepository.getAppsByUserId(user.userId)
+                                                .filter { it.isEnabled }
+                                            selectedAppsList = updated.map { app ->
+                                                SelectableApp(app.packageName, app.appName, app.packageName,
+                                                    true, app.dailyLimit)
+                                            }
+                                            showAddAppsScreen = false
+                                            homeRefreshToken++
+                                        } catch (e: Exception) {
+                                            Log.e("MinderHome", "Failed to add apps", e)
+                                            Toast.makeText(this@MainActivity, "Unable to add apps", Toast.LENGTH_LONG).show()
+                                        }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        } else {
+                            HomeScreen(
+                                selectedApps = selectedAppsList,
+                                appUsageMap = homeUsageMap,
+                                todayUsageMinutes = homeTodayUsage,
+                                challengesCompleted = homeChallengesCompleted,
+                                // Lama - Add opens the dedicated picker; no daily limit selection here.
+                                onAddAppClick = { showAddAppsScreen = true },
+                                // Lama - Update only the selected application's daily limit.
+                                onEditAppClick = { packageName, newLimit ->
+                                    lifecycleScope.launch {
+                                        try {
+                                            val user = userRepository.getUser() ?: return@launch
+                                            val app = restrictedAppRepository.getAppByPackageName(
+                                                userId = user.userId, packageName = packageName
+                                            ) ?: return@launch
+                                            if (!app.isEnabled) return@launch
+                                            val interval = userSettingsRepository
+                                                .getSettingsByUserId(user.userId)?.challengeInterval
+                                            if (newLimit !in 1..1440 ||
+                                                (interval != null && newLimit <= interval)
+                                            ) {
+                                                Toast.makeText(this@MainActivity,
+                                                    "Daily limit must exceed challenge interval.",
+                                                    Toast.LENGTH_LONG).show()
+                                                return@launch
+                                            }
+                                            restrictedAppRepository.updateApp(app.copy(dailyLimit = newLimit))
+                                            selectedAppsList = selectedAppsList.map {
+                                                if (it.packageName == packageName)
+                                                    it.copy(dailyLimitMinutes = newLimit) else it
+                                            }
+                                            homeRefreshToken++
+                                        } catch (e: Exception) {
+                                            Log.e("MinderHome", "Edit failed", e)
+                                            Toast.makeText(this@MainActivity,
+                                                "Unable to update daily limit.", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                                // Lama - Disable restrictions, preserve history.
+                                onDeleteAppClick = { packageName ->
+                                    lifecycleScope.launch {
+                                        try {
+                                            val user = userRepository.getUser() ?: return@launch
+                                            val app = restrictedAppRepository.getAppByPackageName(
+                                                userId = user.userId, packageName = packageName
+                                            ) ?: return@launch
+                                            if (!app.isEnabled) return@launch
+                                            restrictedAppRepository.updateApp(app.copy(isEnabled = false))
+                                            selectedAppsList = selectedAppsList.filterNot {
+                                                it.packageName == packageName
+                                            }
+                                            homeRefreshToken++
+                                        } catch (e: Exception) {
+                                            Log.e("MinderHome", "Remove failed", e)
+                                            Toast.makeText(this@MainActivity,
+                                                "Unable to remove restriction.", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
+                                onSettingsClick = {
+                                    appStateHandler.navigateTo(AppScreen.Settings)
+                                },
+
+                                onTabSelected = { tabIndex ->
+                                    when (tabIndex) {
+                                        1 -> {
+                                            //Ragahd-: Navigate to Statistics screen.
+                                            appStateHandler.navigateTo(AppScreen.Statistics)
+                                        }
+
+                                        2 -> {
+                                            //Ragahd-: Navigate to Progress screen.
+                                            appStateHandler.navigateTo(AppScreen.Progress)
+                                        }
+                                        3 -> appStateHandler.navigateTo(AppScreen.Settings)
+                                    }
+                                }
+                            )
+                        } // Lama - End Home / AddApps conditional
                     }
 
                     //Ragahd-: Display Statistics using the existing Activity ViewModel.
+
                     is AppScreen.Statistics -> {
-                        StatisticsScreen(
-                            viewModel = statisticsViewModel,
-                            onBackClick = {
-                                //Ragahd-: Return to Home screen.
-                                appStateHandler.navigateTo(AppScreen.Home)
+                        // Lama - Keep bottom navigation visible while viewing statistics.
+                        Column {
+                            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                                StatisticsScreen(viewModel = statisticsViewModel)
                             }
-                        )
+                            MinderBottomBar(
+                                selectedTab = 1,
+                                onTabSelected = { tab ->
+                                    when (tab) {
+                                        0 -> appStateHandler.navigateTo(AppScreen.Home)
+                                        2 -> appStateHandler.navigateTo(AppScreen.Progress)
+                                    }
+                                },
+                                onSettingsClick = { appStateHandler.navigateTo(AppScreen.Settings) }
+                            )
+                        }
                     }
                     //Ragahd-: Display Progress using the existing Activity ViewModel.
                     is AppScreen.Progress -> {
-                        ProgressScreen(
-                            viewModel = progressViewModel,
-                            onBackClick = {
-                                //Ragahd-: Return to Home screen.
-                                appStateHandler.navigateTo(AppScreen.Home)
+                        // Lama - Share the same navigation on the Progress page.
+                        Column {
+                            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                                ProgressScreen(
+                                    viewModel = progressViewModel,
+                                    onBackClick = { appStateHandler.navigateTo(AppScreen.Home) }
+                                )
                             }
-                        )
+                            MinderBottomBar(
+                                selectedTab = 2,
+                                onTabSelected = { tab ->
+                                    when (tab) {
+                                        0 -> appStateHandler.navigateTo(AppScreen.Home)
+                                        1 -> appStateHandler.navigateTo(AppScreen.Statistics)
+                                    }
+                                },
+                                onSettingsClick = { appStateHandler.navigateTo(AppScreen.Settings) }
+                            )
+                        }
+                    }
+                    is AppScreen.Settings -> {
+                        Column {
+                            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                                if (::settingsViewModel.isInitialized && settingsUserId != null) {
+                                    SettingsConnectedScreen(
+                                        viewModel = settingsViewModel,
+                                        userId = settingsUserId!!,
+                                        dailyLimitMinutes = settingsMinDailyLimit,
+                                        onSaved = { minutes ->
+                                            AppAccessibilityService.notifyChallengeIntervalChanged(minutes)
+                                            // Lama: Success is shown as a themed banner in SettingsConnectedScreen.
+                                        }
+                                    )
+                                } else {
+                                    androidx.compose.material3.CircularProgressIndicator()
+                                }
+                            }
+                            MinderBottomBar(
+                                selectedTab = 3,
+                                onTabSelected = { tab ->
+                                    when (tab) {
+                                        0 -> appStateHandler.navigateTo(AppScreen.Home)
+                                        1 -> appStateHandler.navigateTo(AppScreen.Statistics)
+                                        2 -> appStateHandler.navigateTo(AppScreen.Progress)
+                                    }
+                                },
+                                onSettingsClick = {}
+                            )
+                        }
                     }
                     else -> {
                         WelcomeScreen(
@@ -581,6 +847,18 @@ class MainActivity : ComponentActivity() {
 
                 restrictedAppRepository = RestrictedAppRepositoryImpl(database.restrictedAppDao())
                 userSettingsRepository = UserSettingsRepositoryImpl(database.userSettingsDao())
+                settingsViewModel = ViewModelProvider(
+                    this@MainActivity,
+                    object : ViewModelProvider.Factory {
+                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                            if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
+                                @Suppress("UNCHECKED_CAST")
+                                return SettingsViewModel(userSettingsRepository) as T
+                            }
+                            throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
+                        }
+                    }
+                )[SettingsViewModel::class.java]
 
                 //Ragahd-: Create historical usage data source.
                 val historicalUsageDataSource =
@@ -616,10 +894,12 @@ class MainActivity : ComponentActivity() {
                 )
                 val usageSessionRepository = UsageSessionRepositoryImpl(database.usageSessionDao())
                 val dailyUsageRepository = DailyUsageRepositoryImpl(database.dailyUsageDao())
+                homeDailyUsageRepository = dailyUsageRepository
                 //Ragahd-: Initialize intervention repository
                 val interventionRepository = InterventionRepositoryImpl(
                     database.interventionDao()
                 )
+                homeInterventionRepository = interventionRepository
 
                 //Ragahd-: Initialize challenge attempt repository
                 val challengeAttemptRepository = ChallengeAttemptRepositoryImpl(
@@ -757,6 +1037,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 syncUsageData()
+                homeRefreshToken++
             } catch (e: Exception) {
                 Log.e("MainActivity", "Error initializing services", e)
             }
@@ -802,6 +1083,9 @@ class MainActivity : ComponentActivity() {
                     Log.e("MinderUsage", "Daily usage FAILED: appId=${app.id}", e)
                 }
             }
+            // Lama - Refresh Home after daily usage is persisted.
+            homeRefreshToken++
         }
     }
 }
+
