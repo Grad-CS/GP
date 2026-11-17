@@ -1351,23 +1351,32 @@ class AppAccessibilityService : AccessibilityService() {
                 // Lama - Creates a real challenge and intervention
                 // using the existing challenge engine
                 //Ragahd-: Selects a challenge type for the generated intervention.
+                //Ragahd-: Selects a challenge type for the generated intervention.
                 val challengeType = ChallengeType.values().random()
 
-                //Ragahd-: Reads the user's saved challenge difficulty from Room.
+//Ragahd-: Randomly selects a puzzle game when the selected type is PUZZLE.
+                val puzzleGame = if (challengeType == ChallengeType.PUZZLE) {
+                    listOf("ODD_SHAPE", "SEQUENCE_MEMORY").random()
+                } else {
+                    "ODD_SHAPE"
+                }
+
+//Ragahd-: Reads the user's saved challenge difficulty from Room.
                 val settings = userSettingsRepository.getSettingsByUserId(user.userId)
 
-                //Ragahd-: Uses the saved difficulty and falls back to EASY if settings are unavailable.
+//Ragahd-: Uses the saved difficulty and falls back to EASY if settings are unavailable.
                 val difficulty = settings?.challengeDifficulty
                     ?.uppercase()
                     ?.takeIf { it in setOf("EASY", "MEDIUM", "HARD") }
                     ?: "EASY"
 
-                //Ragahd-: Generates and saves the challenge using the selected difficulty.
+//Ragahd-: Generates and saves the challenge using the selected difficulty and puzzle game.
                 val result =
                     startInterventionUseCase(
                         appId = restrictedApp.id,
                         difficulty = difficulty,
-                        type = challengeType
+                        type = challengeType,
+                        puzzleGame = puzzleGame
                     )
 
                 if (result == null) {
