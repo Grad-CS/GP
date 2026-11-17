@@ -11,6 +11,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import com.example.minder.domain.model.ChallengeAttemptWithType
+import java.util.Calendar
 
 class HandleChallengeResultUseCaseTest {
 
@@ -132,7 +134,16 @@ class HandleChallengeResultUseCaseTest {
 
         assertEquals(10, interventionRepository.completedInterventionId)
         assertEquals("LOCKED", interventionRepository.completedStatus)
-        assertNull(interventionRepository.unlockTime)
+        //Ragahd-: Verify the lock expires at the next local midnight.
+        val expectedUnlockTime = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        assertEquals(expectedUnlockTime, interventionRepository.unlockTime)
     }
 
     private fun createIncorrectAttempt(
@@ -192,6 +203,12 @@ class HandleChallengeResultUseCaseTest {
                 it.interventionId == interventionId
             }
         }
+        //Ragahd-: Returns no typed attempts because these tests do not cover usage statistics.
+        override suspend fun getAttemptsWithTypeForPeriod(
+            userId: Int,
+            startTime: Long,
+            endTime: Long
+        ): List<ChallengeAttemptWithType> = emptyList()
     }
 
     private class FakeInterventionRepository :
@@ -235,6 +252,20 @@ class HandleChallengeResultUseCaseTest {
 
         //Ragahd-: Implements the pending intervention lookup for a user.
         override suspend fun getPendingInterventionForUser(userId: Int): Intervention? {
+            return null
+        }
+        //Ragahd-: No active lock is required by this test fake.
+        override suspend fun getActiveLockForUser(
+            userId: Int,
+            currentTimeMillis: Long
+        ): Intervention? {
+            return null
+        }
+
+        //Ragahd-: No previous lock is required by this test fake.
+        override suspend fun getLatestLockForUser(
+            userId: Int
+        ): Intervention? {
             return null
         }
 

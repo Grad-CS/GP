@@ -51,7 +51,11 @@ class SaveHistoricalBaselinesUseCaseTest {
 
         val result = useCase(userId = 1)
 
-        assertEquals(listOf(app.id), result)
+        assertEquals(1, result.size)
+        assertEquals(BaselineSaveStatus.SAVED, result.single().status)
+        assertEquals(app.id, result.single().appId)
+        assertEquals(app.packageName, result.single().packageName)
+        assertEquals(14, result.single().recordsFound)
         assertEquals(7, usageBaselineRepository.savedRecords[app.id]?.size)
         //Ragahd-: Verify all seven weekdays have exactly two historical samples.
         val savedBaselines = usageBaselineRepository.savedRecords[app.id].orEmpty()
@@ -74,7 +78,9 @@ class SaveHistoricalBaselinesUseCaseTest {
 
         val result = useCase(userId = 1)
 
-        assertTrue(result.isEmpty())
+        assertEquals(1, result.size)
+        assertEquals(BaselineSaveStatus.INCOMPLETE_HISTORY, result.single().status)
+        assertEquals(13, result.single().recordsFound)
         assertTrue(usageBaselineRepository.savedRecords.isEmpty())
     }
 
@@ -88,7 +94,9 @@ class SaveHistoricalBaselinesUseCaseTest {
 
         val result = useCase(userId = 1)
 
-        assertTrue(result.isEmpty())
+        assertEquals(1, result.size)
+        assertEquals(BaselineSaveStatus.ALREADY_EXISTS, result.single().status)
+        assertEquals(0, result.single().recordsFound)
         assertEquals(0, historicalUsageRepository.callCount)
         assertTrue(usageBaselineRepository.savedRecords.isEmpty())
     }
@@ -104,7 +112,10 @@ class SaveHistoricalBaselinesUseCaseTest {
 
         val result = useCase(userId = 1)
 
-        assertEquals(listOf(disabledApp.id), result)
+        assertEquals(1, result.size)
+        assertEquals(BaselineSaveStatus.SAVED, result.single().status)
+        assertEquals(disabledApp.id, result.single().appId)
+        assertEquals(14, result.single().recordsFound)
         assertEquals(
             7,
             usageBaselineRepository.savedRecords[disabledApp.id]?.size
@@ -120,7 +131,9 @@ class SaveHistoricalBaselinesUseCaseTest {
 
         val result = useCase(userId = 1)
 
-        assertTrue(result.isEmpty())
+        assertEquals(1, result.size)
+        assertEquals(BaselineSaveStatus.SAVE_FAILED, result.single().status)
+        assertEquals(14, result.single().recordsFound)
         assertTrue(usageBaselineRepository.savedRecords.isEmpty())
     }
 
@@ -142,7 +155,9 @@ class SaveHistoricalBaselinesUseCaseTest {
 
         val result = useCase(userId = 1)
 
-        assertTrue(result.isEmpty())
+        assertEquals(1, result.size)
+        assertEquals(BaselineSaveStatus.INVALID_HISTORICAL_DATA, result.single().status)
+        assertEquals(14, result.single().recordsFound)
         assertTrue(usageBaselineRepository.savedRecords.isEmpty())
     }
 

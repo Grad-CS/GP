@@ -26,10 +26,11 @@ class UpdateDailyUsageUseCase(
         // Total usage is stored in seconds
         val totalUsageSeconds = sessions.sumOf { it.duration }
 
-        // Check if a daily usage record already exists
+        //Ragahd-: Find an existing usage record within the selected day
         val existingUsage = dailyUsageRepository.getUsageForDate(
             appId = appId,
-            date = date
+            dayStart = startTime,
+            nextDayStart = endTime
         )
 
         if (existingUsage == null) {

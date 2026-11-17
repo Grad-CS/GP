@@ -263,11 +263,16 @@ class GetWeeklyUsageStatsUseCaseTest {
                     it.date < endDate
         }
 
+        //Ragahd-: Match the repository's local day range signature.
+        //Ragahd-: Find usage within the requested local day range.
         override suspend fun getUsageForDate(
             appId: Int,
-            date: Long
-        ) = usages.find {
-            it.appId == appId && it.date == date
+            dayStart: Long,
+            nextDayStart: Long
+        ): UsageSummary? = usages.find {
+            it.appId == appId &&
+                    it.date >= dayStart &&
+                    it.date < nextDayStart
         }
 
         override suspend fun updateDailyUsage(usage: UsageSummary) {}

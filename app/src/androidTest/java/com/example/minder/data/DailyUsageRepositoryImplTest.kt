@@ -80,8 +80,10 @@ class DailyUsageRepositoryImplTest {
         val dailyUsageId = repository.addDailyUsage(usage)
 
         val result = repository.getUsageForDate(
+            //Ragahd-: Match the repository's day-range query.
             appId = appId,
-            date = 1000L
+            dayStart = 1000L,
+            nextDayStart = 1001L
         )
 
         assertNotNull(result)
@@ -203,8 +205,10 @@ class DailyUsageRepositoryImplTest {
         )
 
         val result = repository.getUsageForDate(
+            //Ragahd-: Match the stored record's timestamp.
             appId = appId,
-            date = 5000L
+            dayStart = 5000L,
+            nextDayStart = 5001L
         )
 
         assertNotNull(result)
@@ -246,8 +250,10 @@ class DailyUsageRepositoryImplTest {
         repository.updateDailyUsage(updatedUsage)
 
         val result = repository.getUsageForDate(
+            //Ragahd-: Match the repository's day-range query.
             appId = appId,
-            date = 1000L
+            dayStart = 1000L,
+            nextDayStart = 1001L
         )
 
         assertNotNull(result)
@@ -276,8 +282,10 @@ class DailyUsageRepositoryImplTest {
         ).toInt()
 
         val result = repository.getUsageForDate(
+            //Ragahd-: Match the stored record's timestamp.
             appId = appId,
-            date = 9000L
+            dayStart = 9000L,
+            nextDayStart = 9001L
         )
 
         assertNotNull(result)

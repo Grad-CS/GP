@@ -4,6 +4,7 @@ import com.example.minder.domain.model.AppDailyUsageStats
 import com.example.minder.domain.model.DailyUsageStats
 import com.example.minder.domain.repository.DailyUsageRepository
 import com.example.minder.domain.repository.RestrictedAppRepository
+import java.util.Calendar
 
 class GetDailyUsageStatsUseCase(
     private val restrictedAppRepository: RestrictedAppRepository,
@@ -15,6 +16,19 @@ class GetDailyUsageStatsUseCase(
         date: Long
     ): DailyUsageStats {
 
+        //Ragahd-: Calculate the local day boundaries
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = date
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        val dayStart = calendar.timeInMillis
+        calendar.add(Calendar.DAY_OF_MONTH, 1)
+        val nextDayStart = calendar.timeInMillis
+
         //Ragahd-: Get only enabled restricted apps
         val enabledApps = restrictedAppRepository
             .getAppsByUserId(userId)
@@ -22,10 +36,10 @@ class GetDailyUsageStatsUseCase(
 
         //Ragahd-: Retrieve daily usage for each enabled app
         val appStats = enabledApps.map { app ->
-
             val dailyUsage = dailyUsageRepository.getUsageForDate(
                 appId = app.id,
-                date = date
+                dayStart = dayStart,
+                nextDayStart = nextDayStart
             )
 
             AppDailyUsageStats(

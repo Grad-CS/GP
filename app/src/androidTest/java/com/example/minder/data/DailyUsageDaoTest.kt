@@ -60,7 +60,8 @@ class DailyUsageDaoTest {
 
         val usage = dailyUsageDao.getUsageForDate(
             appId = appId,
-            date = 1000L
+            dayStart = 1000L,
+            nextDayStart = 1001L
         )
 
         assertNotNull(usage)
@@ -208,7 +209,8 @@ class DailyUsageDaoTest {
 
         val usage = dailyUsageDao.getUsageForDate(
             appId = appId,
-            date = 1000L
+            dayStart = 1000L,
+            nextDayStart = 1001L
         )
 
         assertNotNull(usage)
@@ -224,7 +226,8 @@ class DailyUsageDaoTest {
 
         val result = dailyUsageDao.getUsageForDate(
             appId = appId,
-            date = 1000L
+            dayStart = 1000L,
+            nextDayStart = 1001L
         )
 
         assertNotNull(result)
@@ -249,7 +252,8 @@ class DailyUsageDaoTest {
 
         val usage = dailyUsageDao.getUsageForDate(
             appId = appId,
-            date = 1000L
+            dayStart = 1000L,
+            nextDayStart = 1001L
         )
 
         assertNotNull(usage)
@@ -259,7 +263,8 @@ class DailyUsageDaoTest {
         val deletedUsage =
             dailyUsageDao.getUsageForDate(
                 appId = appId,
-                date = 1000L
+                dayStart = 1000L,
+                nextDayStart = 1001L
             )
 
         assertNull(deletedUsage)

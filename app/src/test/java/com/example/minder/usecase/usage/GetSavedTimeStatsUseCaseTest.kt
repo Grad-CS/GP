@@ -360,11 +360,16 @@ class GetSavedTimeStatsUseCaseTest {
             it.date >= startDate && it.date < endDate
         }
 
+        //Ragahd-: Match the repository's local day range signature.
+        //Ragahd-: Find usage within the requested local day range.
+        //Ragahd-: Find usage within the requested local day range.
         override suspend fun getUsageForDate(
             appId: Int,
-            date: Long
+            dayStart: Long,
+            nextDayStart: Long
         ) = records[appId].orEmpty().find {
-            it.date == date
+            it.date >= dayStart &&
+                    it.date < nextDayStart
         }
 
         override suspend fun updateDailyUsage(usage: UsageSummary) {

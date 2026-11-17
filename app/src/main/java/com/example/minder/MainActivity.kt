@@ -246,13 +246,20 @@ class MainActivity : ComponentActivity() {
                             var secondsTotal = 0L
                             var completed = 0
                             for (app in apps) {
+                                //Ragahd-: Read usage within the current local day range.
                                 val seconds = (homeDailyUsageRepository.getUsageForDate(
-                                    appId = app.id, date = dayStart
+                                    appId = app.id,
+                                    dayStart = dayStart,
+                                    nextDayStart = dayEnd
                                 )?.totalUsage ?: 0).coerceAtLeast(0)
+
                                 usage[app.packageName] = ((seconds.toLong() + 59) / 60).toInt()
                                 secondsTotal += seconds
+
                                 completed += homeInterventionRepository.getInterventionsForPeriod(
-                                    appId = app.id, startTime = dayStart, endTime = dayEnd
+                                    appId = app.id,
+                                    startTime = dayStart,
+                                    endTime = dayEnd
                                 ).count { it.status == "UNLOCKED" }
                             }
                             homeUsageMap = usage
@@ -438,14 +445,20 @@ class MainActivity : ComponentActivity() {
                                     //Ragahd-: Generate historical baselines when Usage Access is available.
                                     if (usagePermissionManager.hasUsageAccess()) {
                                         try {
-                                            val savedBaselineAppIds = saveHistoricalBaselinesUseCase(
+                                            val baselineResults = saveHistoricalBaselinesUseCase(
                                                 userId = user.userId
                                             )
 
-                                            Log.d(
-                                                "HistoricalBaseline",
-                                                "Baselines saved for app IDs: $savedBaselineAppIds"
-                                            )
+                                            //Ragahd-: Log the processing result for each restricted app.
+                                            baselineResults.forEach { result ->
+                                                Log.d(
+                                                    "HistoricalBaseline",
+                                                    "App: ${result.packageName}, " +
+                                                            "Status: ${result.status}, " +
+                                                            "Records: ${result.recordsFound}"
+                                                )
+                                            }
+
                                         } catch (e: Exception) {
                                             //Ragahd-: Keep app selection working even if baseline generation fails.
                                             Log.e(
@@ -807,6 +820,7 @@ class MainActivity : ComponentActivity() {
                 //Ragahd-: Check whether historical usage access is available.
                 val hasUsageAccess = usagePermissionManager.hasUsageAccess()
 
+
                 Log.d(
                     "HistoricalDiagnostic",
                     "Usage Access granted: $hasUsageAccess"
@@ -815,8 +829,8 @@ class MainActivity : ComponentActivity() {
                 if (hasUsageAccess) {
                     //Ragahd-: Run historical usage diagnostics on the IO dispatcher.
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        HistoricalUsageDiagnostic(this@MainActivity)
-                            .inspectHistoricalUsage(14)
+                        //Ragahd-: Inspect the last 14 days of historical usage.
+                        HistoricalUsageDiagnostic(this@MainActivity).inspectHistoricalUsage(14)
                     }
                 } else {
                     Log.e(
@@ -1083,6 +1097,8 @@ class MainActivity : ComponentActivity() {
                     Log.e("MinderUsage", "Daily usage FAILED: appId=${app.id}", e)
                 }
             }
+            //Ragahd-: Refresh statistics after today's usage has been persisted.
+            statisticsViewModel.loadStatistics(userId = user.userId)
             // Lama - Refresh Home after daily usage is persisted.
             homeRefreshToken++
         }

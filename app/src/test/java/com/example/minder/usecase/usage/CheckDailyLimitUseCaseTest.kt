@@ -155,9 +155,11 @@ class CheckDailyLimitUseCaseTest {
             endDate: Long
         ): List<UsageSummary> = emptyList()
 
+        //Ragahd-: Match the repository's local day range signature.
         override suspend fun getUsageForDate(
             appId: Int,
-            date: Long
+            dayStart: Long,
+            nextDayStart: Long
         ): UsageSummary? = usage
 
         override suspend fun updateDailyUsage(

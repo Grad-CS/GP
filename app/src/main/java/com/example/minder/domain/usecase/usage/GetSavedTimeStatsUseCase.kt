@@ -25,6 +25,10 @@ class GetSavedTimeStatsUseCase(
         }
 
         val todayStart = todayCalendar.timeInMillis
+        //Ragahd-: Calculate the start of the next local day
+        val nextDayCalendar = todayCalendar.clone() as Calendar
+        nextDayCalendar.add(Calendar.DAY_OF_MONTH, 1)
+        val nextDayStart = nextDayCalendar.timeInMillis
         val todayDayOfWeek = todayCalendar.get(Calendar.DAY_OF_WEEK)
 
         //Ragahd-: Retrieve only enabled restricted apps.
@@ -47,9 +51,11 @@ class GetSavedTimeStatsUseCase(
 
             //Ragahd-: Calculate today's saved time when today's usage exists.
             val todayBaseline = baselines[todayDayOfWeek]
+            //Ragahd-: Retrieve today's usage within the local day range
             val todayUsage = dailyUsageRepository.getUsageForDate(
                 appId = app.id,
-                date = todayStart
+                dayStart = todayStart,
+                nextDayStart = nextDayStart
             )
 
             if (todayBaseline != null && todayUsage != null) {

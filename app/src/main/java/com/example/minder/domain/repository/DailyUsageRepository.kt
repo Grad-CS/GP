@@ -18,9 +18,11 @@ interface DailyUsageRepository {
         endDate: Long
     ): List<UsageSummary>
 
+    //Ragahd-: Retrieve usage within a local day range
     suspend fun getUsageForDate(
         appId: Int,
-        date: Long
+        dayStart: Long,
+        nextDayStart: Long
     ): UsageSummary?
 
     suspend fun updateDailyUsage(

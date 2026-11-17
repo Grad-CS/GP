@@ -34,15 +34,18 @@ interface DailyUsageDao {
         endDate: Long
     ): List<DailyUsageEntity>
 
+    //Ragahd-: Retrieve daily usage within the local day range
     @Query("""
-        SELECT * FROM daily_usage
-        WHERE appId = :appId
-        AND date = :date
-        LIMIT 1
-    """)
+    SELECT * FROM daily_usage
+    WHERE appId = :appId
+    AND date >= :dayStart
+    AND date < :nextDayStart
+    LIMIT 1
+""")
     suspend fun getUsageForDate(
         appId: Int,
-        date: Long
+        dayStart: Long,
+        nextDayStart: Long
     ): DailyUsageEntity?
 
     @Update

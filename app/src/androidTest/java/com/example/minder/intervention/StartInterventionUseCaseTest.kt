@@ -131,6 +131,17 @@ class StartInterventionUseCaseTest {
         //Ragahd-: Implements the pending intervention lookup for a user.
         override suspend fun getPendingInterventionForUser(userId: Int): Intervention? = null
 
+        //Ragahd-: No active lock is required by this test fake.
+        override suspend fun getActiveLockForUser(
+            userId: Int,
+            currentTimeMillis: Long
+        ): Intervention? = null
+
+        //Ragahd-: No previous lock is required by this test fake.
+        override suspend fun getLatestLockForUser(
+            userId: Int
+        ): Intervention? = null
+
         override suspend fun getInterventionsForPeriod(
             appId: Int,
             startTime: Long,

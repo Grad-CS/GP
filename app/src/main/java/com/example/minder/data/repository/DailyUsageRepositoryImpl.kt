@@ -39,12 +39,14 @@ class DailyUsageRepositoryImpl(
             .map { it.toDomain() }
     }
 
+    //Ragahd-: Retrieve usage within a local day range
     override suspend fun getUsageForDate(
         appId: Int,
-        date: Long
+        dayStart: Long,
+        nextDayStart: Long
     ): UsageSummary? {
         return dailyUsageDao
-            .getUsageForDate(appId, date)
+            .getUsageForDate(appId, dayStart, nextDayStart)
             ?.toDomain()
     }
 

@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import com.example.minder.domain.model.ChallengeAttemptWithType
 
 class GetAttemptCountUseCaseTest {
 
@@ -135,5 +136,12 @@ class GetAttemptCountUseCaseTest {
                 it.interventionId == interventionId
             }
         }
+
+        //Ragahd-: Returns no typed attempts because these tests do not cover usage statistics.
+        override suspend fun getAttemptsWithTypeForPeriod(
+            userId: Int,
+            startTime: Long,
+            endTime: Long
+        ): List<ChallengeAttemptWithType> = emptyList()
     }
 }

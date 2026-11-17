@@ -9,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import com.example.minder.domain.model.ChallengeAttemptWithType
 
 class SubmitChallengeUseCaseTest {
 
@@ -142,5 +143,11 @@ class SubmitChallengeUseCaseTest {
                 it.interventionId == interventionId
             }
         }
+        //Ragahd-: Returns no typed attempts because these tests do not cover usage statistics.
+        override suspend fun getAttemptsWithTypeForPeriod(
+            userId: Int,
+            startTime: Long,
+            endTime: Long
+        ): List<ChallengeAttemptWithType> = emptyList()
     }
 }
